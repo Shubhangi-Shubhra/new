@@ -1,479 +1,107 @@
+Below is a very easy MuleSoft POC to understand:
+✅ on-error-continue
+✅ on-error-propagate
+✅ error handling flow
+No connectors download — simple core components only.
+
+✅ Scenario
+
+
+You send a request to HTTP listener /test
+
+
+Inside flow, we force an error (division by zero)
+
+
+Two examples:
+
+
+CaseBehavioron-error-continueError handled → return custom success response to clienton-error-propagateError thrown → client receives error
+
+✅ Example 1 — On Error Continue (Handle the error, don’t break flow)
+✔️ Flow runs
+✔️ Error happens
+✔️ Mule catches & returns custom message
+XML
 <?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+      http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+      http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
 
-<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
-	xmlns="http://www.mulesoft.org/schema/mule/core"
-	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-	xmlns:http="http://www.mulesoft.org/schema/mule/http"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
-http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+    <http:listener-config name="HTTP_Config" >
+        <http:listener-connection host="0.0.0.0" port="8081"/>
+    </http:listener-config>
 
-	<!-- HTTP Listener Configuration -->
-	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config">
-		<http:listener-connection host="0.0.0.0" port="8081" />
-	</http:listener-config>
+    <flow name="error-continue-flow">
+        <http:listener config-ref="HTTP_Config" path="/test-continue" />
 
-	<!-- GLOBAL ERROR HANDLER -->
-	<error-handler name="globalErrorHandler" doc:name="Global Error Handler">
-		<on-error-propagate enableNotifications="true" logException="true" doc:name="Global - Any Error" type="ANY">
-			<logger level="ERROR" doc:name="Logger" message="Global Error Handler - Unhandled Error"/>
-			<ee:transform doc:name="Global Error Response">
-				<ee:message>
-					<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	error: "GLOBAL_ERROR",
-	message: "An unexpected error occurred",
-	description: error.description,
-	timestamp: now()
-}]]></ee:set-payload>
-				</ee:message>
-				<ee:variables>
-					<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
-				</ee:variables>
-			</ee:transform>
-		</on-error-propagate>
-	</error-handler>
+        <!-- Force an error -->
+        <set-payload value="#[1/0]" />
 
-	<!-- SCENARIO 1: On-Error-Propagate vs On-Error-Continue -->
-	<flow name="scenario1-propagate-vs-continue">
-		<http:listener doc:name="POST /transaction/process" config-ref="HTTP_Listener_config" path="/transaction/process"/>
-		
-		<logger level="INFO" doc:name="Logger" message="Processing transaction request"/>
-		
-		<set-variable value="#[payload.accountId]" doc:name="Set Account ID" variableName="accountId"/>
-		<set-variable value="#[payload.amount]" doc:name="Set Amount" variableName="amount"/>
-		
-		<!-- Validation -->
-		<choice doc:name="Validate Amount">
-			<when expression="#[vars.amount &lt;= 0]">
-				<raise-error doc:name="Raise Error - Invalid Amount" type="APP:INVALID_AMOUNT" description="Amount must be greater than zero"/>
-			</when>
-		</choice>
-		
-		<flow-ref doc:name="Call Check Balance" name="checkBalanceSubFlow"/>
-		<flow-ref doc:name="Call Process Payment" name="processPaymentSubFlow"/>
-		
-		<ee:transform doc:name="Success Response">
-			<ee:message>
-				<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	status: "SUCCESS",
-	message: "Transaction processed successfully",
-	accountId: vars.accountId,
-	amount: vars.amount,
-	transactionId: "TXN" ++ (randomInt(99999) as String),
-	timestamp: now()
-}]]></ee:set-payload>
-			</ee:message>
-		</ee:transform>
-		
-		<!-- LOCAL ERROR HANDLER - Overrides Global -->
-		<error-handler>
-			<!-- On-Error-Propagate: Stops flow, returns error to caller -->
-			<on-error-propagate enableNotifications="true" logException="true" doc:name="Invalid Amount" type="APP:INVALID_AMOUNT">
-				<logger level="ERROR" doc:name="Logger" message="Invalid amount error"/>
-				<ee:transform doc:name="Error Response">
-					<ee:message>
-						<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	error: "INVALID_AMOUNT",
-	message: "Amount must be greater than zero",
-	accountId: vars.accountId,
-	amount: vars.amount,
-	timestamp: now()
-}]]></ee:set-payload>
-					</ee:message>
-					<ee:variables>
-						<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
-					</ee:variables>
-				</ee:transform>
-			</on-error-propagate>
-			
-			<!-- On-Error-Continue: Continues flow execution -->
-			<on-error-continue enableNotifications="true" logException="true" doc:name="Insufficient Balance" type="APP:INSUFFICIENT_BALANCE">
-				<logger level="WARN" doc:name="Logger" message="Insufficient balance - Sending notification"/>
-				<set-payload value="#['Notification sent to account holder']" doc:name="Send Notification"/>
-				<ee:transform doc:name="Warning Response">
-					<ee:message>
-						<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	status: "WARNING",
-	error: "INSUFFICIENT_BALANCE",
-	message: "Transaction declined - Insufficient balance",
-	accountId: vars.accountId,
-	requestedAmount: vars.amount,
-	notification: "Account holder notified",
-	timestamp: now()
-}]]></ee:set-payload>
-					</ee:message>
-					<ee:variables>
-						<ee:set-variable variableName="httpStatus"><![CDATA[402]]></ee:set-variable>
-					</ee:variables>
-				</ee:transform>
-			</on-error-continue>
-		</error-handler>
-	</flow>
-
-	<!-- SCENARIO 2: Multiple Error Types Handling -->
-	<flow name="scenario2-multiple-errors">
-		<http:listener doc:name="GET /account/validate" config-ref="HTTP_Listener_config" path="/account/validate"/>
-		
-		<logger level="INFO" doc:name="Logger" message="#['Validating account: ' ++ attributes.queryParams.accountId]"/>
-		
-		<set-variable value="#[attributes.queryParams.accountId]" doc:name="Set Account ID" variableName="accountId"/>
-		
-		<!-- Simulate different error scenarios -->
-		<choice doc:name="Simulate Errors">
-			<when expression="#[vars.accountId == 'ACC001']">
-				<raise-error doc:name="Account Not Found" type="APP:ACCOUNT_NOT_FOUND" description="Account does not exist"/>
-			</when>
-			<when expression="#[vars.accountId == 'ACC002']">
-				<raise-error doc:name="Account Locked" type="APP:ACCOUNT_LOCKED" description="Account is locked"/>
-			</when>
-			<when expression="#[vars.accountId == 'ACC003']">
-				<raise-error doc:name="DB Error" type="DB:CONNECTIVITY" description="Database connection failed"/>
-			</when>
-			<otherwise>
-				<set-payload value="#['Account validated successfully']" doc:name="Set Success Payload"/>
-			</otherwise>
-		</choice>
-		
-		<ee:transform doc:name="Success Response">
-			<ee:message>
-				<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	status: "SUCCESS",
-	message: "Account is valid",
-	accountId: vars.accountId,
-	timestamp: now()
-}]]></ee:set-payload>
-			</ee:message>
-		</ee:transform>
-		
-		<!-- Handle Multiple Error Types -->
-		<error-handler>
-			<on-error-propagate enableNotifications="true" logException="true" doc:name="Account Not Found" type="APP:ACCOUNT_NOT_FOUND">
-				<ee:transform doc:name="Error Response">
-					<ee:message>
-						<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	error: "ACCOUNT_NOT_FOUND",
-	message: "Account does not exist in system",
-	accountId: vars.accountId,
-	timestamp: now()
-}]]></ee:set-payload>
-					</ee:message>
-					<ee:variables>
-						<ee:set-variable variableName="httpStatus"><![CDATA[404]]></ee:set-variable>
-					</ee:variables>
-				</ee:transform>
-			</on-error-propagate>
-			
-			<on-error-propagate enableNotifications="true" logException="true" doc:name="Account Locked" type="APP:ACCOUNT_LOCKED">
-				<ee:transform doc:name="Error Response">
-					<ee:message>
-						<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	error: "ACCOUNT_LOCKED",
-	message: "Account is temporarily locked",
-	accountId: vars.accountId,
-	timestamp: now()
-}]]></ee:set-payload>
-					</ee:message>
-					<ee:variables>
-						<ee:set-variable variableName="httpStatus"><![CDATA[423]]></ee:set-variable>
-					</ee:variables>
-				</ee:transform>
-			</on-error-propagate>
-			
-			<!-- Common Error Handler for Multiple Types -->
-			<on-error-propagate enableNotifications="true" logException="true" doc:name="DB or Connectivity Errors" type="DB:CONNECTIVITY, CONNECTIVITY">
-				<ee:transform doc:name="Error Response">
-					<ee:message>
-						<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	error: "SERVICE_UNAVAILABLE",
-	message: "Service temporarily unavailable",
-	description: error.description,
-	timestamp: now()
-}]]></ee:set-payload>
-					</ee:message>
-					<ee:variables>
-						<ee:set-variable variableName="httpStatus"><![CDATA[503]]></ee:set-variable>
-					</ee:variables>
-				</ee:transform>
-			</on-error-propagate>
-		</error-handler>
-	</flow>
-
-	<!-- SCENARIO 3: Try Block Error Handling -->
-	<flow name="scenario3-try-block">
-		<http:listener doc:name="POST /transaction/safe-process" config-ref="HTTP_Listener_config" path="/transaction/safe-process"/>
-		
-		<logger level="INFO" doc:name="Logger" message="Safe processing with try block"/>
-		
-		<set-variable value="#[payload.accountId]" doc:name="Set Account ID" variableName="accountId"/>
-		<set-variable value="#[payload.amount]" doc:name="Set Amount" variableName="amount"/>
-		
-		<!-- Try Block: Isolate risky operations -->
-		<try doc:name="Try">
-			<logger level="INFO" doc:name="Logger" message="Inside try block - risky operation"/>
-			
-			<!-- Simulate risky operation -->
-			<choice doc:name="Choice">
-				<when expression="#[vars.amount &gt; 10000]">
-					<raise-error doc:name="Raise Error" type="APP:AMOUNT_TOO_HIGH" description="Amount exceeds daily limit"/>
-				</when>
-			</choice>
-			
-			<set-payload value="#['Transaction processed in try block']" doc:name="Set Payload"/>
-			
-			<error-handler>
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" type="APP:AMOUNT_TOO_HIGH">
-					<logger level="WARN" doc:name="Logger" message="Amount too high - Using alternate processing"/>
-					<set-payload value="#['Transaction queued for manual approval']" doc:name="Set Alternative Payload"/>
-				</on-error-continue>
-			</error-handler>
-		</try>
-		
-		<!-- This executes even if error occurred in try block (because of on-error-continue) -->
-		<logger level="INFO" doc:name="Logger" message="After try block - Flow continues"/>
-		
-		<ee:transform doc:name="Final Response">
-			<ee:message>
-				<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	status: "COMPLETED",
-	message: payload,
-	accountId: vars.accountId,
-	amount: vars.amount,
-	timestamp: now()
-}]]></ee:set-payload>
-			</ee:message>
-		</ee:transform>
-	</flow>
-
-	<!-- SCENARIO 4: Raise Custom Errors -->
-	<flow name="scenario4-custom-errors">
-		<http:listener doc:name="POST /transaction/validate-limits" config-ref="HTTP_Listener_config" path="/transaction/validate-limits"/>
-		
-		<logger level="INFO" doc:name="Logger" message="Validating transaction limits"/>
-		
-		<set-variable value="#[payload.amount]" doc:name="Set Amount" variableName="amount"/>
-		<set-variable value="#[payload.transactionType default 'DEBIT']" doc:name="Set Transaction Type" variableName="transactionType"/>
-		
-		<!-- Custom Business Validations -->
-		<choice doc:name="Validate Business Rules">
-			<when expression="#[vars.amount &gt; 100000]">
-				<raise-error doc:name="Raise Custom Error" type="APP:LIMIT_EXCEEDED" description="#['Transaction amount ' ++ vars.amount ++ ' exceeds maximum limit of 100000']"/>
-			</when>
-			<when expression="#[vars.transactionType == 'INTERNATIONAL' and vars.amount &gt; 50000]">
-				<raise-error doc:name="Raise Custom Error" type="APP:INTERNATIONAL_LIMIT_EXCEEDED" description="International transaction limit exceeded"/>
-			</when>
-			<when expression="#[isEmpty(vars.amount)]">
-				<raise-error doc:name="Raise Custom Error" type="APP:MISSING_AMOUNT" description="Amount is required"/>
-			</when>
-		</choice>
-		
-		<ee:transform doc:name="Success Response">
-			<ee:message>
-				<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	status: "VALIDATED",
-	message: "Transaction is within limits",
-	amount: vars.amount,
-	transactionType: vars.transactionType,
-	timestamp: now()
-}]]></ee:set-payload>
-			</ee:message>
-		</ee:transform>
-		
-		<error-handler>
-			<on-error-propagate enableNotifications="true" logException="true" doc:name="Custom Errors" type="APP:LIMIT_EXCEEDED, APP:INTERNATIONAL_LIMIT_EXCEEDED, APP:MISSING_AMOUNT">
-				<ee:transform doc:name="Custom Error Response">
-					<ee:message>
-						<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	error: error.errorType.identifier,
-	message: error.description,
-	amount: vars.amount,
-	transactionType: vars.transactionType,
-	timestamp: now()
-}]]></ee:set-payload>
-					</ee:message>
-					<ee:variables>
-						<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
-					</ee:variables>
-				</ee:transform>
-			</on-error-propagate>
-		</error-handler>
-	</flow>
-
-	<!-- SUB-FLOW 1: Check Balance (can throw error) -->
-	<sub-flow name="checkBalanceSubFlow" doc:name="Check Balance Sub Flow">
-		<logger level="INFO" doc:name="Logger" message="Checking account balance"/>
-		
-		<!-- Simulate balance check -->
-		<choice doc:name="Check Balance">
-			<when expression="#[vars.amount &gt; 5000]">
-				<raise-error doc:name="Insufficient Balance" type="APP:INSUFFICIENT_BALANCE" description="#['Insufficient balance. Requested: ' ++ vars.amount]"/>
-			</when>
-			<otherwise>
-				<logger level="INFO" doc:name="Logger" message="Balance check passed"/>
-			</otherwise>
-		</choice>
-	</sub-flow>
-
-	<!-- SUB-FLOW 2: Process Payment (can throw error) -->
-	<sub-flow name="processPaymentSubFlow" doc:name="Process Payment Sub Flow">
-		<logger level="INFO" doc:name="Logger" message="Processing payment"/>
-		
-		<!-- Simulate payment processing -->
-		<choice doc:name="Process Payment">
-			<when expression="#[vars.accountId == 'ACC999']">
-				<raise-error doc:name="Payment Failed" type="APP:PAYMENT_FAILED" description="Payment gateway error"/>
-			</when>
-			<otherwise>
-				<logger level="INFO" doc:name="Logger" message="Payment processed successfully"/>
-			</otherwise>
-		</choice>
-	</sub-flow>
-
-	<!-- SCENARIO 5: Error Mapping Feature -->
-	<flow name="scenario5-error-mapping">
-		<http:listener doc:name="GET /external/call" config-ref="HTTP_Listener_config" path="/external/call"/>
-		
-		<logger level="INFO" doc:name="Logger" message="Calling external system"/>
-		
-		<!-- Simulate external HTTP call that might fail -->
-		<choice doc:name="Simulate External Call">
-			<when expression="#[attributes.queryParams.status == 'timeout']">
-				<raise-error doc:name="Timeout Error" type="HTTP:TIMEOUT" description="External service timeout"/>
-			</when>
-			<when expression="#[attributes.queryParams.status == 'unavailable']">
-				<raise-error doc:name="Service Unavailable" type="HTTP:SERVICE_UNAVAILABLE" description="External service unavailable"/>
-			</when>
-			<otherwise>
-				<set-payload value="#['External call successful']" doc:name="Set Success Payload"/>
-			</otherwise>
-		</choice>
-		
-		<ee:transform doc:name="Success Response">
-			<ee:message>
-				<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	status: "SUCCESS",
-	message: payload,
-	timestamp: now()
-}]]></ee:set-payload>
-			</ee:message>
-		</ee:transform>
-		
-		<!-- Error Mapping: Map HTTP errors to custom errors -->
-		<error-handler>
-			<on-error-propagate enableNotifications="true" logException="true" doc:name="HTTP Timeout" type="HTTP:TIMEOUT">
-				<ee:transform doc:name="Mapped Error Response">
-					<ee:message>
-						<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	error: "EXTERNAL_SERVICE_TIMEOUT",
-	message: "External service took too long to respond",
-	originalError: error.errorType.identifier,
-	timestamp: now()
-}]]></ee:set-payload>
-					</ee:message>
-					<ee:variables>
-						<ee:set-variable variableName="httpStatus"><![CDATA[504]]></ee:set-variable>
-					</ee:variables>
-				</ee:transform>
-			</on-error-propagate>
-			
-			<on-error-propagate enableNotifications="true" logException="true" doc:name="Service Unavailable" type="HTTP:SERVICE_UNAVAILABLE">
-				<ee:transform doc:name="Mapped Error Response">
-					<ee:message>
-						<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	error: "EXTERNAL_SERVICE_DOWN",
-	message: "External service is currently unavailable",
-	originalError: error.errorType.identifier,
-	timestamp: now()
-}]]></ee:set-payload>
-					</ee:message>
-					<ee:variables>
-						<ee:set-variable variableName="httpStatus"><![CDATA[503]]></ee:set-variable>
-					</ee:variables>
-				</ee:transform>
-			</on-error-propagate>
-		</error-handler>
-	</flow>
-
-	<!-- SCENARIO 6: Global vs Local Error Handler Conflict -->
-	<flow name="scenario6-global-local-conflict">
-		<http:listener doc:name="GET /test/conflict" config-ref="HTTP_Listener_config" path="/test/conflict"/>
-		
-		<logger level="INFO" doc:name="Logger" message="Testing global vs local error handler"/>
-		
-		<raise-error doc:name="Raise Generic Error" type="APP:GENERIC_ERROR" description="Testing error handler priority"/>
-		
-		<!-- Local error handler takes precedence over global -->
-		<error-handler>
-			<on-error-propagate enableNotifications="true" logException="true" doc:name="Local Handler" type="APP:GENERIC_ERROR">
-				<logger level="INFO" doc:name="Logger" message="Local error handler executed (overrides global)"/>
-				<ee:transform doc:name="Local Error Response">
-					<ee:message>
-						<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	handledBy: "LOCAL_ERROR_HANDLER",
-	error: error.errorType.identifier,
-	message: "Local handler took precedence",
-	timestamp: now()
-}]]></ee:set-payload>
-					</ee:message>
-				</ee:transform>
-			</on-error-propagate>
-		</error-handler>
-	</flow>
-
-	<!-- SCENARIO 7: No Local Handler - Global Handler Executes -->
-	<flow name="scenario7-uses-global-handler">
-		<http:listener doc:name="GET /test/global" config-ref="HTTP_Listener_config" path="/test/global"/>
-		
-		<logger level="INFO" doc:name="Logger" message="Testing global error handler"/>
-		
-		<raise-error doc:name="Raise Unhandled Error" type="APP:UNHANDLED_ERROR" description="This will be caught by global handler"/>
-		
-		<!-- No local error handler - Global handler will execute -->
-	</flow>
+        <error-handler>
+            <on-error-continue enableNotifications="true" logException="true">
+                <set-payload value="Error handled successfully inside flow ✅"/>
+            </on-error-continue>
+        </error-handler>
+    </flow>
 
 </mule>
+
+👉 Test
+Open browser / Postman:
+http://localhost:8081/test-continue
+
+✅ Output
+Error handled successfully inside flow ✅
+
+
+✅ Example 2 — On Error Propagate (Throw error back to client)
+❌ Flow fails
+❌ Error propagates to client
+✔️ You see real error in response
+XML
+<flow name="error-propagate-flow">
+    <http:listener config-ref="HTTP_Config" path="/test-propagate" />
+
+    <!-- Force error -->
+    <set-payload value="#[1/0]" />
+
+    <error-handler>
+        <on-error-propagate enableNotifications="true" logException="true">
+            <set-payload value="An error occurred and we propagated it ❌"/>
+        </on-error-propagate>
+    </error-handler>
+</flow>
+
+👉 Test
+http://localhost:8081/test-propagate
+
+❌ Output
+Mule sends HTTP 500 error (propagated)
+
+✅ When to Use?
+Use CaseTypeYou want to stop flow and show real erroron-error-propagateYou want to handle inside flow & continueon-error-continue
+
+🎯 Summary
+Featureon-error-continueon-error-propagateFlow stops?❌✅Return custom msg?✅❌Client sees real error?❌✅
+
+Want Bonus? 🎁
+I can also share:
+
+
+✅ Try–Catch example
+
+
+✅ Global error handler version
+
+
+✅ Logger + when condition error handling
+
+
+✅ Real API integration error POC
+
+
+Just reply: SEND ADVANCED ERROR HANDLING 🚀
