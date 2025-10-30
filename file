@@ -1,43 +1,109 @@
+Below is a simple MuleSoft POC that:
+
+✅ Reads an XML file
+✅ Converts XML → JSON using DataWeave
+✅ Writes JSON into output folder
+
+No external connectors — only File + Transform 💯
+
+✅ Input XML (place in C:/mule/input/data.xml)
+<employees>
+  <employee>
+    <id>1</id>
+    <name>Shubhangi</name>
+  </employee>
+  <employee>
+    <id>2</id>
+    <name>Akshit</name>
+  </employee>
+</employees>
+
+✅ Output JSON (Mule will create)
+{
+  "employees": {
+    "employee": [
+      {
+        "id": "1",
+        "name": "Shubhangi"
+      },
+      {
+        "id": "2",
+        "name": "Akshit"
+      }
+    ]
+  }
+}
+
+✅ Mule XML Flow (Copy-Paste)
 <?xml version="1.0" encoding="UTF-8"?>
-<mule xmlns:http="http://www.mulesoft.org/schema/mule/http"
+<mule xmlns:file="http://www.mulesoft.org/schema/mule/file"
       xmlns="http://www.mulesoft.org/schema/mule/core"
       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
       xsi:schemaLocation="
       http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-      http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+      http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd">
 
-    <!-- HTTP Listener config (required!) -->
-    <http:listener-config name="HTTP_Config">
-        <http:listener-connection host="0.0.0.0" port="8081"/>
-    </http:listener-config>
+    <!-- File Folder Config -->
+    <file:config name="File_Config">
+        <file:connection workingDir="C:/mule"/>
+    </file:config>
 
-    <!-- PROPAGATE ERROR FLOW -->
-    <flow name="error-propagate-flow">
-        <http:listener config-ref="HTTP_Config" path="/test-propagate" />
+    <flow name="xml-to-json-flow">
+        <!-- Trigger manually or via HTTP if you want -->
+        <scheduler>
+            <scheduling-strategy>
+                <fixed-frequency frequency="10000"/>  <!-- runs every 10 sec -->
+            </scheduling-strategy>
+        </scheduler>
 
-        <!-- Force error -->
-        <set-payload value="#[1/0]" />
+        <!-- Read XML file -->
+        <file:read config-ref="File_Config" path="input/data.xml" />
 
-        <!-- Error handler -->
-        <error-handler>
-            <on-error-propagate enableNotifications="true" logException="true">
-                <set-payload value="An error occurred and we propagated it ❌"/>
-            </on-error-propagate>
-        </error-handler>
+        <!-- Convert XML to JSON -->
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[
+                    %dw 2.0
+                    output application/json
+                    ---
+                    payload
+                ]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <!-- Write JSON to file -->
+        <file:write config-ref="File_Config"
+                    path="#['output/result_' ++ now() ++ '.json']"
+                    mode="CREATE_NEW"/>
+
     </flow>
-
-    <!-- CONTINUE ERROR FLOW (Optional extra example) -->
-    <flow name="error-continue-flow">
-        <http:listener config-ref="HTTP_Config" path="/test-continue" />
-
-        <!-- Force error -->
-        <set-payload value="#[1/0]" />
-
-        <error-handler>
-            <on-error-continue enableNotifications="true" logException="true">
-                <set-payload value="Error handled inside flow ✅"/>
-            </on-error-continue>
-        </error-handler>
-    </flow>
-
 </mule>
+
+✅ Folder Setup
+
+Make sure these exist:
+
+C:/mule/input
+C:/mule/output
+
+
+Put data.xml inside input folder.
+
+✅ Run
+
+1️⃣ Run the Mule App
+2️⃣ Wait for scheduler
+3️⃣ Check C:/mule/output 🎉
+
+➕ Want Trigger via HTTP Instead?
+
+Tell me and I will give you HTTP version of flow too 🍀
+
+Reply with what you want next:
+
+1️⃣ JSON → XML conversion
+2️⃣ Convert XML → CSV
+3️⃣ Error handling example for file not found
+4️⃣ File processed move to /processed/ folder
+
+Just tell the number 😊
