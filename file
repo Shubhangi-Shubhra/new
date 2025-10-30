@@ -1,0 +1,641 @@
+RAML Fragments - Complete POC Guide
+I'll create a comprehensive POC covering all RAML fragment types with practical examples.
+
+PART 1: RAML Fragments Introduction
+What are RAML Fragments?
+RAML fragments are reusable pieces of RAML code that can be referenced across multiple API specifications. They promote reusability and maintainability.
+Types of Fragments:
+
+Data Types - Define data structures
+Library - Collection of reusable components
+Examples - Sample data for requests/responses
+Traits - Reusable API behaviors
+Security Schemes - Authentication mechanisms
+
+
+PART 2: Create Project in Anypoint Platform
+Steps:
+
+Login to Anypoint Platform
+
+Go to https://anypoint.mulesoft.com
+Login with credentials
+
+
+Navigate to Design Center
+
+Click on Design Center from top menu
+Click Create → New API Specification
+
+
+Create New API Project
+
+Name: healthcare-api
+Click Create
+
+
+
+
+PART 3: Fragments - Data Types
+Step 1: Create Data Type Fragment
+
+In Design Center, click + next to Files
+Select New Fragment
+Choose Data Type
+Name: patient-datatype.raml
+
+Code for patient-datatype.raml:
+raml#%RAML 1.0 DataType
+
+type: object
+properties:
+  patientId:
+    type: string
+    required: true
+    example: "P12345"
+  firstName:
+    type: string
+    required: true
+    minLength: 2
+    maxLength: 50
+    example: "John"
+  lastName:
+    type: string
+    required: true
+    minLength: 2
+    maxLength: 50
+    example: "Doe"
+  dateOfBirth:
+    type: date-only
+    required: true
+    example: 1990-05-15
+  email:
+    type: string
+    pattern: ^[a-zA-Z0-9+_.-]+@[a-zA-Z0-9.-]+$
+    example: "john.doe@email.com"
+  phone:
+    type: string
+    pattern: ^\+?[1-9]\d{1,14}$
+    example: "+1234567890"
+  address:
+    type: object
+    properties:
+      street: string
+      city: string
+      state: string
+      zipCode: string
+    example:
+      street: "123 Main St"
+      city: "Boston"
+      state: "MA"
+      zipCode: "02101"
+Step 2: Create Another Data Type
+
+Create new fragment: appointment-datatype.raml
+
+Code:
+raml#%RAML 1.0 DataType
+
+type: object
+properties:
+  appointmentId:
+    type: string
+    required: true
+    example: "APT001"
+  patientId:
+    type: string
+    required: true
+    example: "P12345"
+  doctorName:
+    type: string
+    required: true
+    example: "Dr. Smith"
+  appointmentDate:
+    type: datetime
+    required: true
+    example: 2025-11-01T10:00:00
+  status:
+    type: string
+    enum: [scheduled, completed, cancelled]
+    example: "scheduled"
+  notes:
+    type: string
+    required: false
+    example: "Regular checkup"
+
+PART 4: Fragments - Library
+Create Library Fragment
+
+Create new fragment → Library
+Name: common-library.raml
+
+Code:
+raml#%RAML 1.0 Library
+
+usage: Common library containing shared data types and schemas
+
+types:
+  ErrorResponse:
+    type: object
+    properties:
+      errorCode:
+        type: string
+        example: "ERR_001"
+      message:
+        type: string
+        example: "Invalid request"
+      timestamp:
+        type: datetime
+        example: 2025-10-30T10:00:00
+      
+  SuccessResponse:
+    type: object
+    properties:
+      status:
+        type: string
+        example: "success"
+      message:
+        type: string
+        example: "Operation completed successfully"
+      data:
+        type: any
+        
+  PaginationInfo:
+    type: object
+    properties:
+      page:
+        type: integer
+        minimum: 1
+        example: 1
+      pageSize:
+        type: integer
+        minimum: 1
+        maximum: 100
+        example: 10
+      totalPages:
+        type: integer
+        example: 5
+      totalRecords:
+        type: integer
+        example: 50
+
+PART 5: Fragments - Examples
+Create Example Fragment
+
+Create new fragment → Example
+Name: patient-example.raml
+
+Code:
+raml#%RAML 1.0 NamedExample
+
+value:
+  patientId: "P67890"
+  firstName: "Jane"
+  lastName: "Smith"
+  dateOfBirth: 1985-08-20
+  email: "jane.smith@email.com"
+  phone: "+1987654321"
+  address:
+    street: "456 Oak Avenue"
+    city: "New York"
+    state: "NY"
+    zipCode: "10001"
+Create Another Example
+
+Create: appointment-example.raml
+
+Code:
+raml#%RAML 1.0 NamedExample
+
+value:
+  appointmentId: "APT002"
+  patientId: "P67890"
+  doctorName: "Dr. Johnson"
+  appointmentDate: 2025-11-05T14:30:00
+  status: "scheduled"
+  notes: "Follow-up consultation"
+
+PART 6: Fragments - Traits
+Create Traits Fragment
+
+Create new fragment → Trait
+Name: common-traits.raml
+
+Code:
+raml#%RAML 1.0 Trait
+
+usage: Common traits for API endpoints
+
+queryParameters:
+  offset:
+    type: integer
+    required: false
+    default: 0
+    minimum: 0
+    description: Number of items to skip
+    example: 0
+  limit:
+    type: integer
+    required: false
+    default: 10
+    minimum: 1
+    maximum: 100
+    description: Maximum number of items to return
+    example: 10
+responses:
+  400:
+    body:
+      application/json:
+        type: object
+        properties:
+          errorCode: string
+          message: string
+        example:
+          errorCode: "BAD_REQUEST"
+          message: "Invalid query parameters"
+  500:
+    body:
+      application/json:
+        type: object
+        properties:
+          errorCode: string
+          message: string
+        example:
+          errorCode: "INTERNAL_ERROR"
+          message: "Internal server error"
+Create Searchable Trait
+
+Create: searchable-trait.raml
+
+Code:
+raml#%RAML 1.0 Trait
+
+usage: Trait for searchable endpoints
+
+queryParameters:
+  searchTerm:
+    type: string
+    required: false
+    minLength: 3
+    description: Search term for filtering results
+    example: "John"
+  sortBy:
+    type: string
+    required: false
+    enum: [name, date, id]
+    default: date
+    description: Field to sort by
+    example: "name"
+  order:
+    type: string
+    required: false
+    enum: [asc, desc]
+    default: asc
+    description: Sort order
+    example: "asc"
+
+PART 7: Fragments - Security Scheme - Basic Auth
+Create Basic Auth Security Scheme
+
+Create new fragment → Security Scheme
+Name: basic-auth-scheme.raml
+
+Code:
+raml#%RAML 1.0 SecurityScheme
+
+description: |
+  This API supports Basic Authentication.
+  Clients must send credentials using the Authorization header.
+  
+type: Basic Authentication
+
+describedBy:
+  headers:
+    Authorization:
+      description: |
+        Used to send Base64-encoded credentials.
+        Format: Basic base64(username:password)
+      type: string
+      example: "Basic dXNlcm5hbWU6cGFzc3dvcmQ="
+  responses:
+    401:
+      description: Unauthorized - Invalid credentials
+      body:
+        application/json:
+          type: object
+          properties:
+            error:
+              type: string
+              example: "Invalid username or password"
+    403:
+      description: Forbidden - Insufficient permissions
+      body:
+        application/json:
+          type: object
+          properties:
+            error:
+              type: string
+              example: "Access denied"
+
+PART 8: Fragments - Security Scheme - OAuth 2.0
+Create OAuth 2.0 Security Scheme
+
+Create new fragment → Security Scheme
+Name: oauth2-scheme.raml
+
+Code:
+raml#%RAML 1.0 SecurityScheme
+
+description: |
+  OAuth 2.0 authentication scheme
+  Supports authorization code grant type
+  
+type: OAuth 2.0
+
+settings:
+  authorizationUri: https://auth.example.com/oauth/authorize
+  accessTokenUri: https://auth.example.com/oauth/token
+  authorizationGrants: [ authorization_code, client_credentials ]
+  scopes:
+    - read:patients
+    - write:patients
+    - read:appointments
+    - write:appointments
+    - admin
+
+describedBy:
+  headers:
+    Authorization:
+      description: |
+        Used to send a valid OAuth 2.0 access token.
+        Format: Bearer {access_token}
+      type: string
+      example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  responses:
+    401:
+      description: Unauthorized - Invalid or expired token
+      body:
+        application/json:
+          example:
+            error: "invalid_token"
+            error_description: "The access token is invalid or expired"
+    403:
+      description: Forbidden - Insufficient scope
+      body:
+        application/json:
+          example:
+            error: "insufficient_scope"
+            error_description: "The token does not have the required scope"
+
+PART 9: Main API Specification - Using All Fragments
+Create Main API File: healthcare-api.raml
+Code:
+raml#%RAML 1.0
+title: Healthcare API
+version: v1
+baseUri: https://api.healthcare.com/{version}
+mediaType: application/json
+
+# Import fragments
+uses:
+  commonLib: common-library.raml
+  
+# Import data types
+types:
+  Patient: !include patient-datatype.raml
+  Appointment: !include appointment-datatype.raml
+
+# Import traits
+traits:
+  pageable: !include common-traits.raml
+  searchable: !include searchable-trait.raml
+
+# Import security schemes
+securitySchemes:
+  basicAuth: !include basic-auth-scheme.raml
+  oauth2: !include oauth2-scheme.raml
+
+# Apply security globally
+securedBy: [oauth2]
+
+/patients:
+  get:
+    description: Get all patients
+    is: [pageable, searchable]
+    securedBy: [oauth2: { scopes: [read:patients] }]
+    responses:
+      200:
+        body:
+          application/json:
+            type: object
+            properties:
+              patients: Patient[]
+              pagination: commonLib.PaginationInfo
+            example:
+              patients:
+                - !include patient-example.raml
+              pagination:
+                page: 1
+                pageSize: 10
+                totalPages: 5
+                totalRecords: 50
+                
+  post:
+    description: Create a new patient
+    securedBy: [oauth2: { scopes: [write:patients] }]
+    body:
+      application/json:
+        type: Patient
+        example: !include patient-example.raml
+    responses:
+      201:
+        body:
+          application/json:
+            type: commonLib.SuccessResponse
+            example:
+              status: "success"
+              message: "Patient created successfully"
+              data:
+                patientId: "P67890"
+      400:
+        body:
+          application/json:
+            type: commonLib.ErrorResponse
+
+  /{patientId}:
+    uriParameters:
+      patientId:
+        type: string
+        example: "P12345"
+        
+    get:
+      description: Get patient by ID
+      securedBy: [oauth2: { scopes: [read:patients] }]
+      responses:
+        200:
+          body:
+            application/json:
+              type: Patient
+              example: !include patient-example.raml
+        404:
+          body:
+            application/json:
+              type: commonLib.ErrorResponse
+              example:
+                errorCode: "NOT_FOUND"
+                message: "Patient not found"
+                timestamp: 2025-10-30T10:00:00
+
+/appointments:
+  get:
+    description: Get all appointments
+    is: [pageable]
+    securedBy: [oauth2: { scopes: [read:appointments] }]
+    responses:
+      200:
+        body:
+          application/json:
+            type: object
+            properties:
+              appointments: Appointment[]
+              pagination: commonLib.PaginationInfo
+            
+  post:
+    description: Create new appointment
+    securedBy: [oauth2: { scopes: [write:appointments] }]
+    body:
+      application/json:
+        type: Appointment
+        example: !include appointment-example.raml
+    responses:
+      201:
+        body:
+          application/json:
+            type: commonLib.SuccessResponse
+
+/health:
+  get:
+    description: Health check endpoint
+    securedBy: [null]
+    responses:
+      200:
+        body:
+          application/json:
+            example:
+              status: "UP"
+              timestamp: 2025-10-30T10:00:00
+              version: "v1"
+
+PART 10: Introducing Health Check API
+Purpose of Health Check API:
+
+Monitor API availability
+Check dependencies (database, external services)
+Used by load balancers and monitoring tools
+No authentication required
+
+Create Enhanced Health Check
+Add to your main API:
+raml/health:
+  get:
+    description: Basic health check
+    securedBy: [null]
+    responses:
+      200:
+        body:
+          application/json:
+            example:
+              status: "UP"
+              timestamp: 2025-10-30T10:00:00
+              
+  /detailed:
+    get:
+      description: Detailed health check with dependencies
+      securedBy: [basicAuth]
+      responses:
+        200:
+          body:
+            application/json:
+              example:
+                status: "UP"
+                timestamp: 2025-10-30T10:00:00
+                version: "v1"
+                dependencies:
+                  database:
+                    status: "UP"
+                    responseTime: "50ms"
+                  externalAPI:
+                    status: "UP"
+                    responseTime: "120ms"
+                uptime: "24h 35m"
+```
+
+---
+
+## **PART 11: Testing in Anypoint Platform**
+
+### Steps to Test:
+
+1. **Publish to Exchange**
+   - Click **Publish** button
+   - Select **Publish to Exchange**
+   - Add version info
+   - Click **Publish**
+
+2. **Test in API Console**
+   - In Design Center, click on any endpoint
+   - Click **Try It** on the right panel
+   - Add mock data
+   - Click **Send**
+
+3. **View Documentation**
+   - Click on **Documentation** tab
+   - Review all endpoints
+   - Check all fragments are properly linked
+
+---
+
+## **PART 12: Implementation in Anypoint Studio**
+
+### Steps:
+
+1. **Open Anypoint Studio**
+
+2. **Import API Specification**
+   - File → New → Mule Project
+   - Check **Import a published API**
+   - Search for your `healthcare-api`
+   - Select and import
+
+3. **Implement Endpoints**
+   - Studio generates flows automatically
+   - Add implementation logic to each flow
+
+4. **Add Transform Components**
+   - For POST /patients flow:
+     - Add **Transform Message**
+     - Map incoming payload to database format
+
+5. **Add Database Operations**
+   - Drag **Select** operation for GET
+   - Drag **Insert** operation for POST
+   - Configure database connector
+
+6. **Implement Health Check**
+   - For /health endpoint:
+     - Add **Set Payload** component
+     - Set value:
+```
+     #[{
+       status: "UP",
+       timestamp: now()
+     }]
+
+Summary of POC Coverage
+✅ Data Types - Created Patient and Appointment types
+✅ Library - Created common library with reusable types
+✅ Examples - Created named examples for testing
+✅ Traits - Created pageable and searchable traits
+✅ Security Schemes - Implemented Basic Auth and OAuth 2.0
+✅ Health Check API - Created basic and detailed health endpoints
+This POC demonstrates all RAML fragment types working together in a real healthcare API scenario!
