@@ -1,641 +1,479 @@
-RAML Fragments - Complete POC Guide
-I'll create a comprehensive POC covering all RAML fragment types with practical examples.
-
-PART 1: RAML Fragments Introduction
-What are RAML Fragments?
-RAML fragments are reusable pieces of RAML code that can be referenced across multiple API specifications. They promote reusability and maintainability.
-Types of Fragments:
-
-Data Types - Define data structures
-Library - Collection of reusable components
-Examples - Sample data for requests/responses
-Traits - Reusable API behaviors
-Security Schemes - Authentication mechanisms
-
-
-PART 2: Create Project in Anypoint Platform
-Steps:
-
-Login to Anypoint Platform
-
-Go to https://anypoint.mulesoft.com
-Login with credentials
-
-
-Navigate to Design Center
-
-Click on Design Center from top menu
-Click Create → New API Specification
-
-
-Create New API Project
-
-Name: healthcare-api
-Click Create
-
-
-
-
-PART 3: Fragments - Data Types
-Step 1: Create Data Type Fragment
-
-In Design Center, click + next to Files
-Select New Fragment
-Choose Data Type
-Name: patient-datatype.raml
-
-Code for patient-datatype.raml:
-raml#%RAML 1.0 DataType
-
-type: object
-properties:
-  patientId:
-    type: string
-    required: true
-    example: "P12345"
-  firstName:
-    type: string
-    required: true
-    minLength: 2
-    maxLength: 50
-    example: "John"
-  lastName:
-    type: string
-    required: true
-    minLength: 2
-    maxLength: 50
-    example: "Doe"
-  dateOfBirth:
-    type: date-only
-    required: true
-    example: 1990-05-15
-  email:
-    type: string
-    pattern: ^[a-zA-Z0-9+_.-]+@[a-zA-Z0-9.-]+$
-    example: "john.doe@email.com"
-  phone:
-    type: string
-    pattern: ^\+?[1-9]\d{1,14}$
-    example: "+1234567890"
-  address:
-    type: object
-    properties:
-      street: string
-      city: string
-      state: string
-      zipCode: string
-    example:
-      street: "123 Main St"
-      city: "Boston"
-      state: "MA"
-      zipCode: "02101"
-Step 2: Create Another Data Type
-
-Create new fragment: appointment-datatype.raml
-
-Code:
-raml#%RAML 1.0 DataType
-
-type: object
-properties:
-  appointmentId:
-    type: string
-    required: true
-    example: "APT001"
-  patientId:
-    type: string
-    required: true
-    example: "P12345"
-  doctorName:
-    type: string
-    required: true
-    example: "Dr. Smith"
-  appointmentDate:
-    type: datetime
-    required: true
-    example: 2025-11-01T10:00:00
-  status:
-    type: string
-    enum: [scheduled, completed, cancelled]
-    example: "scheduled"
-  notes:
-    type: string
-    required: false
-    example: "Regular checkup"
-
-PART 4: Fragments - Library
-Create Library Fragment
-
-Create new fragment → Library
-Name: common-library.raml
-
-Code:
-raml#%RAML 1.0 Library
-
-usage: Common library containing shared data types and schemas
-
-types:
-  ErrorResponse:
-    type: object
-    properties:
-      errorCode:
-        type: string
-        example: "ERR_001"
-      message:
-        type: string
-        example: "Invalid request"
-      timestamp:
-        type: datetime
-        example: 2025-10-30T10:00:00
-      
-  SuccessResponse:
-    type: object
-    properties:
-      status:
-        type: string
-        example: "success"
-      message:
-        type: string
-        example: "Operation completed successfully"
-      data:
-        type: any
-        
-  PaginationInfo:
-    type: object
-    properties:
-      page:
-        type: integer
-        minimum: 1
-        example: 1
-      pageSize:
-        type: integer
-        minimum: 1
-        maximum: 100
-        example: 10
-      totalPages:
-        type: integer
-        example: 5
-      totalRecords:
-        type: integer
-        example: 50
-
-PART 5: Fragments - Examples
-Create Example Fragment
-
-Create new fragment → Example
-Name: patient-example.raml
-
-Code:
-raml#%RAML 1.0 NamedExample
-
-value:
-  patientId: "P67890"
-  firstName: "Jane"
-  lastName: "Smith"
-  dateOfBirth: 1985-08-20
-  email: "jane.smith@email.com"
-  phone: "+1987654321"
-  address:
-    street: "456 Oak Avenue"
-    city: "New York"
-    state: "NY"
-    zipCode: "10001"
-Create Another Example
-
-Create: appointment-example.raml
-
-Code:
-raml#%RAML 1.0 NamedExample
-
-value:
-  appointmentId: "APT002"
-  patientId: "P67890"
-  doctorName: "Dr. Johnson"
-  appointmentDate: 2025-11-05T14:30:00
-  status: "scheduled"
-  notes: "Follow-up consultation"
-
-PART 6: Fragments - Traits
-Create Traits Fragment
-
-Create new fragment → Trait
-Name: common-traits.raml
-
-Code:
-raml#%RAML 1.0 Trait
-
-usage: Common traits for API endpoints
-
-queryParameters:
-  offset:
-    type: integer
-    required: false
-    default: 0
-    minimum: 0
-    description: Number of items to skip
-    example: 0
-  limit:
-    type: integer
-    required: false
-    default: 10
-    minimum: 1
-    maximum: 100
-    description: Maximum number of items to return
-    example: 10
-responses:
-  400:
-    body:
-      application/json:
-        type: object
-        properties:
-          errorCode: string
-          message: string
-        example:
-          errorCode: "BAD_REQUEST"
-          message: "Invalid query parameters"
-  500:
-    body:
-      application/json:
-        type: object
-        properties:
-          errorCode: string
-          message: string
-        example:
-          errorCode: "INTERNAL_ERROR"
-          message: "Internal server error"
-Create Searchable Trait
-
-Create: searchable-trait.raml
-
-Code:
-raml#%RAML 1.0 Trait
-
-usage: Trait for searchable endpoints
-
-queryParameters:
-  searchTerm:
-    type: string
-    required: false
-    minLength: 3
-    description: Search term for filtering results
-    example: "John"
-  sortBy:
-    type: string
-    required: false
-    enum: [name, date, id]
-    default: date
-    description: Field to sort by
-    example: "name"
-  order:
-    type: string
-    required: false
-    enum: [asc, desc]
-    default: asc
-    description: Sort order
-    example: "asc"
-
-PART 7: Fragments - Security Scheme - Basic Auth
-Create Basic Auth Security Scheme
-
-Create new fragment → Security Scheme
-Name: basic-auth-scheme.raml
-
-Code:
-raml#%RAML 1.0 SecurityScheme
-
-description: |
-  This API supports Basic Authentication.
-  Clients must send credentials using the Authorization header.
-  
-type: Basic Authentication
-
-describedBy:
-  headers:
-    Authorization:
-      description: |
-        Used to send Base64-encoded credentials.
-        Format: Basic base64(username:password)
-      type: string
-      example: "Basic dXNlcm5hbWU6cGFzc3dvcmQ="
-  responses:
-    401:
-      description: Unauthorized - Invalid credentials
-      body:
-        application/json:
-          type: object
-          properties:
-            error:
-              type: string
-              example: "Invalid username or password"
-    403:
-      description: Forbidden - Insufficient permissions
-      body:
-        application/json:
-          type: object
-          properties:
-            error:
-              type: string
-              example: "Access denied"
-
-PART 8: Fragments - Security Scheme - OAuth 2.0
-Create OAuth 2.0 Security Scheme
-
-Create new fragment → Security Scheme
-Name: oauth2-scheme.raml
-
-Code:
-raml#%RAML 1.0 SecurityScheme
-
-description: |
-  OAuth 2.0 authentication scheme
-  Supports authorization code grant type
-  
-type: OAuth 2.0
-
-settings:
-  authorizationUri: https://auth.example.com/oauth/authorize
-  accessTokenUri: https://auth.example.com/oauth/token
-  authorizationGrants: [ authorization_code, client_credentials ]
-  scopes:
-    - read:patients
-    - write:patients
-    - read:appointments
-    - write:appointments
-    - admin
-
-describedBy:
-  headers:
-    Authorization:
-      description: |
-        Used to send a valid OAuth 2.0 access token.
-        Format: Bearer {access_token}
-      type: string
-      example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-  responses:
-    401:
-      description: Unauthorized - Invalid or expired token
-      body:
-        application/json:
-          example:
-            error: "invalid_token"
-            error_description: "The access token is invalid or expired"
-    403:
-      description: Forbidden - Insufficient scope
-      body:
-        application/json:
-          example:
-            error: "insufficient_scope"
-            error_description: "The token does not have the required scope"
-
-PART 9: Main API Specification - Using All Fragments
-Create Main API File: healthcare-api.raml
-Code:
-raml#%RAML 1.0
-title: Healthcare API
-version: v1
-baseUri: https://api.healthcare.com/{version}
-mediaType: application/json
-
-# Import fragments
-uses:
-  commonLib: common-library.raml
-  
-# Import data types
-types:
-  Patient: !include patient-datatype.raml
-  Appointment: !include appointment-datatype.raml
-
-# Import traits
-traits:
-  pageable: !include common-traits.raml
-  searchable: !include searchable-trait.raml
-
-# Import security schemes
-securitySchemes:
-  basicAuth: !include basic-auth-scheme.raml
-  oauth2: !include oauth2-scheme.raml
-
-# Apply security globally
-securedBy: [oauth2]
-
-/patients:
-  get:
-    description: Get all patients
-    is: [pageable, searchable]
-    securedBy: [oauth2: { scopes: [read:patients] }]
-    responses:
-      200:
-        body:
-          application/json:
-            type: object
-            properties:
-              patients: Patient[]
-              pagination: commonLib.PaginationInfo
-            example:
-              patients:
-                - !include patient-example.raml
-              pagination:
-                page: 1
-                pageSize: 10
-                totalPages: 5
-                totalRecords: 50
-                
-  post:
-    description: Create a new patient
-    securedBy: [oauth2: { scopes: [write:patients] }]
-    body:
-      application/json:
-        type: Patient
-        example: !include patient-example.raml
-    responses:
-      201:
-        body:
-          application/json:
-            type: commonLib.SuccessResponse
-            example:
-              status: "success"
-              message: "Patient created successfully"
-              data:
-                patientId: "P67890"
-      400:
-        body:
-          application/json:
-            type: commonLib.ErrorResponse
-
-  /{patientId}:
-    uriParameters:
-      patientId:
-        type: string
-        example: "P12345"
-        
-    get:
-      description: Get patient by ID
-      securedBy: [oauth2: { scopes: [read:patients] }]
-      responses:
-        200:
-          body:
-            application/json:
-              type: Patient
-              example: !include patient-example.raml
-        404:
-          body:
-            application/json:
-              type: commonLib.ErrorResponse
-              example:
-                errorCode: "NOT_FOUND"
-                message: "Patient not found"
-                timestamp: 2025-10-30T10:00:00
-
-/appointments:
-  get:
-    description: Get all appointments
-    is: [pageable]
-    securedBy: [oauth2: { scopes: [read:appointments] }]
-    responses:
-      200:
-        body:
-          application/json:
-            type: object
-            properties:
-              appointments: Appointment[]
-              pagination: commonLib.PaginationInfo
-            
-  post:
-    description: Create new appointment
-    securedBy: [oauth2: { scopes: [write:appointments] }]
-    body:
-      application/json:
-        type: Appointment
-        example: !include appointment-example.raml
-    responses:
-      201:
-        body:
-          application/json:
-            type: commonLib.SuccessResponse
-
-/health:
-  get:
-    description: Health check endpoint
-    securedBy: [null]
-    responses:
-      200:
-        body:
-          application/json:
-            example:
-              status: "UP"
-              timestamp: 2025-10-30T10:00:00
-              version: "v1"
-
-PART 10: Introducing Health Check API
-Purpose of Health Check API:
-
-Monitor API availability
-Check dependencies (database, external services)
-Used by load balancers and monitoring tools
-No authentication required
-
-Create Enhanced Health Check
-Add to your main API:
-raml/health:
-  get:
-    description: Basic health check
-    securedBy: [null]
-    responses:
-      200:
-        body:
-          application/json:
-            example:
-              status: "UP"
-              timestamp: 2025-10-30T10:00:00
-              
-  /detailed:
-    get:
-      description: Detailed health check with dependencies
-      securedBy: [basicAuth]
-      responses:
-        200:
-          body:
-            application/json:
-              example:
-                status: "UP"
-                timestamp: 2025-10-30T10:00:00
-                version: "v1"
-                dependencies:
-                  database:
-                    status: "UP"
-                    responseTime: "50ms"
-                  externalAPI:
-                    status: "UP"
-                    responseTime: "120ms"
-                uptime: "24h 35m"
-```
-
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+	<!-- HTTP Listener Configuration -->
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config">
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+
+	<!-- GLOBAL ERROR HANDLER -->
+	<error-handler name="globalErrorHandler" doc:name="Global Error Handler">
+		<on-error-propagate enableNotifications="true" logException="true" doc:name="Global - Any Error" type="ANY">
+			<logger level="ERROR" doc:name="Logger" message="Global Error Handler - Unhandled Error"/>
+			<ee:transform doc:name="Global Error Response">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
 ---
+{
+	error: "GLOBAL_ERROR",
+	message: "An unexpected error occurred",
+	description: error.description,
+	timestamp: now()
+}]]></ee:set-payload>
+				</ee:message>
+				<ee:variables>
+					<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+		</on-error-propagate>
+	</error-handler>
 
-## **PART 11: Testing in Anypoint Platform**
-
-### Steps to Test:
-
-1. **Publish to Exchange**
-   - Click **Publish** button
-   - Select **Publish to Exchange**
-   - Add version info
-   - Click **Publish**
-
-2. **Test in API Console**
-   - In Design Center, click on any endpoint
-   - Click **Try It** on the right panel
-   - Add mock data
-   - Click **Send**
-
-3. **View Documentation**
-   - Click on **Documentation** tab
-   - Review all endpoints
-   - Check all fragments are properly linked
-
+	<!-- SCENARIO 1: On-Error-Propagate vs On-Error-Continue -->
+	<flow name="scenario1-propagate-vs-continue">
+		<http:listener doc:name="POST /transaction/process" config-ref="HTTP_Listener_config" path="/transaction/process"/>
+		
+		<logger level="INFO" doc:name="Logger" message="Processing transaction request"/>
+		
+		<set-variable value="#[payload.accountId]" doc:name="Set Account ID" variableName="accountId"/>
+		<set-variable value="#[payload.amount]" doc:name="Set Amount" variableName="amount"/>
+		
+		<!-- Validation -->
+		<choice doc:name="Validate Amount">
+			<when expression="#[vars.amount &lt;= 0]">
+				<raise-error doc:name="Raise Error - Invalid Amount" type="APP:INVALID_AMOUNT" description="Amount must be greater than zero"/>
+			</when>
+		</choice>
+		
+		<flow-ref doc:name="Call Check Balance" name="checkBalanceSubFlow"/>
+		<flow-ref doc:name="Call Process Payment" name="processPaymentSubFlow"/>
+		
+		<ee:transform doc:name="Success Response">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
 ---
+{
+	status: "SUCCESS",
+	message: "Transaction processed successfully",
+	accountId: vars.accountId,
+	amount: vars.amount,
+	transactionId: "TXN" ++ (randomInt(99999) as String),
+	timestamp: now()
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		
+		<!-- LOCAL ERROR HANDLER - Overrides Global -->
+		<error-handler>
+			<!-- On-Error-Propagate: Stops flow, returns error to caller -->
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="Invalid Amount" type="APP:INVALID_AMOUNT">
+				<logger level="ERROR" doc:name="Logger" message="Invalid amount error"/>
+				<ee:transform doc:name="Error Response">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	error: "INVALID_AMOUNT",
+	message: "Amount must be greater than zero",
+	accountId: vars.accountId,
+	amount: vars.amount,
+	timestamp: now()
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+			
+			<!-- On-Error-Continue: Continues flow execution -->
+			<on-error-continue enableNotifications="true" logException="true" doc:name="Insufficient Balance" type="APP:INSUFFICIENT_BALANCE">
+				<logger level="WARN" doc:name="Logger" message="Insufficient balance - Sending notification"/>
+				<set-payload value="#['Notification sent to account holder']" doc:name="Send Notification"/>
+				<ee:transform doc:name="Warning Response">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: "WARNING",
+	error: "INSUFFICIENT_BALANCE",
+	message: "Transaction declined - Insufficient balance",
+	accountId: vars.accountId,
+	requestedAmount: vars.amount,
+	notification: "Account holder notified",
+	timestamp: now()
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[402]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-continue>
+		</error-handler>
+	</flow>
 
-## **PART 12: Implementation in Anypoint Studio**
+	<!-- SCENARIO 2: Multiple Error Types Handling -->
+	<flow name="scenario2-multiple-errors">
+		<http:listener doc:name="GET /account/validate" config-ref="HTTP_Listener_config" path="/account/validate"/>
+		
+		<logger level="INFO" doc:name="Logger" message="#['Validating account: ' ++ attributes.queryParams.accountId]"/>
+		
+		<set-variable value="#[attributes.queryParams.accountId]" doc:name="Set Account ID" variableName="accountId"/>
+		
+		<!-- Simulate different error scenarios -->
+		<choice doc:name="Simulate Errors">
+			<when expression="#[vars.accountId == 'ACC001']">
+				<raise-error doc:name="Account Not Found" type="APP:ACCOUNT_NOT_FOUND" description="Account does not exist"/>
+			</when>
+			<when expression="#[vars.accountId == 'ACC002']">
+				<raise-error doc:name="Account Locked" type="APP:ACCOUNT_LOCKED" description="Account is locked"/>
+			</when>
+			<when expression="#[vars.accountId == 'ACC003']">
+				<raise-error doc:name="DB Error" type="DB:CONNECTIVITY" description="Database connection failed"/>
+			</when>
+			<otherwise>
+				<set-payload value="#['Account validated successfully']" doc:name="Set Success Payload"/>
+			</otherwise>
+		</choice>
+		
+		<ee:transform doc:name="Success Response">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: "SUCCESS",
+	message: "Account is valid",
+	accountId: vars.accountId,
+	timestamp: now()
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		
+		<!-- Handle Multiple Error Types -->
+		<error-handler>
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="Account Not Found" type="APP:ACCOUNT_NOT_FOUND">
+				<ee:transform doc:name="Error Response">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	error: "ACCOUNT_NOT_FOUND",
+	message: "Account does not exist in system",
+	accountId: vars.accountId,
+	timestamp: now()
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+			
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="Account Locked" type="APP:ACCOUNT_LOCKED">
+				<ee:transform doc:name="Error Response">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	error: "ACCOUNT_LOCKED",
+	message: "Account is temporarily locked",
+	accountId: vars.accountId,
+	timestamp: now()
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[423]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+			
+			<!-- Common Error Handler for Multiple Types -->
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="DB or Connectivity Errors" type="DB:CONNECTIVITY, CONNECTIVITY">
+				<ee:transform doc:name="Error Response">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	error: "SERVICE_UNAVAILABLE",
+	message: "Service temporarily unavailable",
+	description: error.description,
+	timestamp: now()
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[503]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+		</error-handler>
+	</flow>
 
-### Steps:
+	<!-- SCENARIO 3: Try Block Error Handling -->
+	<flow name="scenario3-try-block">
+		<http:listener doc:name="POST /transaction/safe-process" config-ref="HTTP_Listener_config" path="/transaction/safe-process"/>
+		
+		<logger level="INFO" doc:name="Logger" message="Safe processing with try block"/>
+		
+		<set-variable value="#[payload.accountId]" doc:name="Set Account ID" variableName="accountId"/>
+		<set-variable value="#[payload.amount]" doc:name="Set Amount" variableName="amount"/>
+		
+		<!-- Try Block: Isolate risky operations -->
+		<try doc:name="Try">
+			<logger level="INFO" doc:name="Logger" message="Inside try block - risky operation"/>
+			
+			<!-- Simulate risky operation -->
+			<choice doc:name="Choice">
+				<when expression="#[vars.amount &gt; 10000]">
+					<raise-error doc:name="Raise Error" type="APP:AMOUNT_TOO_HIGH" description="Amount exceeds daily limit"/>
+				</when>
+			</choice>
+			
+			<set-payload value="#['Transaction processed in try block']" doc:name="Set Payload"/>
+			
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" type="APP:AMOUNT_TOO_HIGH">
+					<logger level="WARN" doc:name="Logger" message="Amount too high - Using alternate processing"/>
+					<set-payload value="#['Transaction queued for manual approval']" doc:name="Set Alternative Payload"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		
+		<!-- This executes even if error occurred in try block (because of on-error-continue) -->
+		<logger level="INFO" doc:name="Logger" message="After try block - Flow continues"/>
+		
+		<ee:transform doc:name="Final Response">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: "COMPLETED",
+	message: payload,
+	accountId: vars.accountId,
+	amount: vars.amount,
+	timestamp: now()
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
 
-1. **Open Anypoint Studio**
+	<!-- SCENARIO 4: Raise Custom Errors -->
+	<flow name="scenario4-custom-errors">
+		<http:listener doc:name="POST /transaction/validate-limits" config-ref="HTTP_Listener_config" path="/transaction/validate-limits"/>
+		
+		<logger level="INFO" doc:name="Logger" message="Validating transaction limits"/>
+		
+		<set-variable value="#[payload.amount]" doc:name="Set Amount" variableName="amount"/>
+		<set-variable value="#[payload.transactionType default 'DEBIT']" doc:name="Set Transaction Type" variableName="transactionType"/>
+		
+		<!-- Custom Business Validations -->
+		<choice doc:name="Validate Business Rules">
+			<when expression="#[vars.amount &gt; 100000]">
+				<raise-error doc:name="Raise Custom Error" type="APP:LIMIT_EXCEEDED" description="#['Transaction amount ' ++ vars.amount ++ ' exceeds maximum limit of 100000']"/>
+			</when>
+			<when expression="#[vars.transactionType == 'INTERNATIONAL' and vars.amount &gt; 50000]">
+				<raise-error doc:name="Raise Custom Error" type="APP:INTERNATIONAL_LIMIT_EXCEEDED" description="International transaction limit exceeded"/>
+			</when>
+			<when expression="#[isEmpty(vars.amount)]">
+				<raise-error doc:name="Raise Custom Error" type="APP:MISSING_AMOUNT" description="Amount is required"/>
+			</when>
+		</choice>
+		
+		<ee:transform doc:name="Success Response">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: "VALIDATED",
+	message: "Transaction is within limits",
+	amount: vars.amount,
+	transactionType: vars.transactionType,
+	timestamp: now()
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		
+		<error-handler>
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="Custom Errors" type="APP:LIMIT_EXCEEDED, APP:INTERNATIONAL_LIMIT_EXCEEDED, APP:MISSING_AMOUNT">
+				<ee:transform doc:name="Custom Error Response">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	error: error.errorType.identifier,
+	message: error.description,
+	amount: vars.amount,
+	transactionType: vars.transactionType,
+	timestamp: now()
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+		</error-handler>
+	</flow>
 
-2. **Import API Specification**
-   - File → New → Mule Project
-   - Check **Import a published API**
-   - Search for your `healthcare-api`
-   - Select and import
+	<!-- SUB-FLOW 1: Check Balance (can throw error) -->
+	<sub-flow name="checkBalanceSubFlow" doc:name="Check Balance Sub Flow">
+		<logger level="INFO" doc:name="Logger" message="Checking account balance"/>
+		
+		<!-- Simulate balance check -->
+		<choice doc:name="Check Balance">
+			<when expression="#[vars.amount &gt; 5000]">
+				<raise-error doc:name="Insufficient Balance" type="APP:INSUFFICIENT_BALANCE" description="#['Insufficient balance. Requested: ' ++ vars.amount]"/>
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="Logger" message="Balance check passed"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
 
-3. **Implement Endpoints**
-   - Studio generates flows automatically
-   - Add implementation logic to each flow
+	<!-- SUB-FLOW 2: Process Payment (can throw error) -->
+	<sub-flow name="processPaymentSubFlow" doc:name="Process Payment Sub Flow">
+		<logger level="INFO" doc:name="Logger" message="Processing payment"/>
+		
+		<!-- Simulate payment processing -->
+		<choice doc:name="Process Payment">
+			<when expression="#[vars.accountId == 'ACC999']">
+				<raise-error doc:name="Payment Failed" type="APP:PAYMENT_FAILED" description="Payment gateway error"/>
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="Logger" message="Payment processed successfully"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
 
-4. **Add Transform Components**
-   - For POST /patients flow:
-     - Add **Transform Message**
-     - Map incoming payload to database format
+	<!-- SCENARIO 5: Error Mapping Feature -->
+	<flow name="scenario5-error-mapping">
+		<http:listener doc:name="GET /external/call" config-ref="HTTP_Listener_config" path="/external/call"/>
+		
+		<logger level="INFO" doc:name="Logger" message="Calling external system"/>
+		
+		<!-- Simulate external HTTP call that might fail -->
+		<choice doc:name="Simulate External Call">
+			<when expression="#[attributes.queryParams.status == 'timeout']">
+				<raise-error doc:name="Timeout Error" type="HTTP:TIMEOUT" description="External service timeout"/>
+			</when>
+			<when expression="#[attributes.queryParams.status == 'unavailable']">
+				<raise-error doc:name="Service Unavailable" type="HTTP:SERVICE_UNAVAILABLE" description="External service unavailable"/>
+			</when>
+			<otherwise>
+				<set-payload value="#['External call successful']" doc:name="Set Success Payload"/>
+			</otherwise>
+		</choice>
+		
+		<ee:transform doc:name="Success Response">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: "SUCCESS",
+	message: payload,
+	timestamp: now()
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		
+		<!-- Error Mapping: Map HTTP errors to custom errors -->
+		<error-handler>
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="HTTP Timeout" type="HTTP:TIMEOUT">
+				<ee:transform doc:name="Mapped Error Response">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	error: "EXTERNAL_SERVICE_TIMEOUT",
+	message: "External service took too long to respond",
+	originalError: error.errorType.identifier,
+	timestamp: now()
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[504]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+			
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="Service Unavailable" type="HTTP:SERVICE_UNAVAILABLE">
+				<ee:transform doc:name="Mapped Error Response">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	error: "EXTERNAL_SERVICE_DOWN",
+	message: "External service is currently unavailable",
+	originalError: error.errorType.identifier,
+	timestamp: now()
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[503]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+		</error-handler>
+	</flow>
 
-5. **Add Database Operations**
-   - Drag **Select** operation for GET
-   - Drag **Insert** operation for POST
-   - Configure database connector
+	<!-- SCENARIO 6: Global vs Local Error Handler Conflict -->
+	<flow name="scenario6-global-local-conflict">
+		<http:listener doc:name="GET /test/conflict" config-ref="HTTP_Listener_config" path="/test/conflict"/>
+		
+		<logger level="INFO" doc:name="Logger" message="Testing global vs local error handler"/>
+		
+		<raise-error doc:name="Raise Generic Error" type="APP:GENERIC_ERROR" description="Testing error handler priority"/>
+		
+		<!-- Local error handler takes precedence over global -->
+		<error-handler>
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="Local Handler" type="APP:GENERIC_ERROR">
+				<logger level="INFO" doc:name="Logger" message="Local error handler executed (overrides global)"/>
+				<ee:transform doc:name="Local Error Response">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	handledBy: "LOCAL_ERROR_HANDLER",
+	error: error.errorType.identifier,
+	message: "Local handler took precedence",
+	timestamp: now()
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</on-error-propagate>
+		</error-handler>
+	</flow>
 
-6. **Implement Health Check**
-   - For /health endpoint:
-     - Add **Set Payload** component
-     - Set value:
-```
-     #[{
-       status: "UP",
-       timestamp: now()
-     }]
+	<!-- SCENARIO 7: No Local Handler - Global Handler Executes -->
+	<flow name="scenario7-uses-global-handler">
+		<http:listener doc:name="GET /test/global" config-ref="HTTP_Listener_config" path="/test/global"/>
+		
+		<logger level="INFO" doc:name="Logger" message="Testing global error handler"/>
+		
+		<raise-error doc:name="Raise Unhandled Error" type="APP:UNHANDLED_ERROR" description="This will be caught by global handler"/>
+		
+		<!-- No local error handler - Global handler will execute -->
+	</flow>
 
-Summary of POC Coverage
-✅ Data Types - Created Patient and Appointment types
-✅ Library - Created common library with reusable types
-✅ Examples - Created named examples for testing
-✅ Traits - Created pageable and searchable traits
-✅ Security Schemes - Implemented Basic Auth and OAuth 2.0
-✅ Health Check API - Created basic and detailed health endpoints
-This POC demonstrates all RAML fragment types working together in a real healthcare API scenario!
+</mule>
