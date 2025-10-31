@@ -1,35 +1,43 @@
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.interfaces.RSAPublicKey;
-import java.util.Base64;
+<?xml version="1.0" encoding="UTF-8"?>
 
-public class SimpleSSHKeyGenerator {
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+               http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+               http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+               http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
 
-    public static void main(String[] args) {
-        try {
-            // Generate RSA key pair (2048-bit)
-            KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
-            keyGen.initialize(2048);
-            KeyPair keyPair = keyGen.generateKeyPair();
+	<http:listener-config name="HTTP_Config" host="0.0.0.0" port="8081"/>
 
-            // Convert to PEM (Private Key)
-            String privateKeyPEM = Base64.getEncoder().encodeToString(keyPair.getPrivate().getEncoded());
-            privateKeyPEM = "-----BEGIN PRIVATE KEY-----\n" +
-                            privateKeyPEM +
-                            "\n-----END PRIVATE KEY-----";
+	<flow name="choice-error-flow">
+		<http:listener path="/process" config-ref="HTTP_Config"/>
+		
+		<!-- Choice Router -->
+		<choice doc:name="Route By Type">
+			<when expression="#[attributes.queryParams.type == 'success']">
+				<set-payload value="✅ Processed successfully!" />
+			</when>
+			
+			<when expression="#[attributes.queryParams.type == 'fail']">
+				<raise-error type="CUSTOM:PROCESS_FAILURE" description="❌ Forced failure by user request"/>
+			</when>
+			
+			<otherwise>
+				<set-payload value="⚠️ Unknown process type supplied"/>
+			</otherwise>
+		</choice>
 
-            // Convert to SSH Public Key format
-            RSAPublicKey pub = (RSAPublicKey) keyPair.getPublic();
-            String publicKeyBase64 = Base64.getEncoder().encodeToString(pub.getEncoded());
-            String publicKeySSH = "ssh-rsa " + publicKeyBase64 + " user@localhost";
+		<!-- Error Handler -->
+		<error-handler>
+			<on-error-propagate enableNotifications="true" logException="true">
+				<set-payload value='{"error":"Processing failed! Please try again."}'/>
+				<set-property propertyName="Content-Type" value="application/json"/>
+				<set-variable variableName="httpStatus" value="500"/>
+			</on-error-propagate>
+		</error-handler>
 
-            // Print both keys
-            System.out.println("✅ SSH Key Pair Generated Successfully!");
-            System.out.println("\nPublic Key (add this to authorized_keys):\n" + publicKeySSH);
-            System.out.println("\nPrivate Key (keep it safe):\n" + privateKeyPEM);
+	</flow>
 
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-}
+</mule>
