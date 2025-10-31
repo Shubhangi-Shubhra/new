@@ -14,22 +14,20 @@
 	<flow name="choice-error-flow">
 		<http:listener path="/process" config-ref="HTTP_Config"/>
 		
-		<!-- Choice Router -->
-		<choice doc:name="Route By Type">
-			<when expression="#[attributes.queryParams.type == 'success']">
+		<choice doc:name="Route By Action">
+			<when expression="#[attributes.queryParams.action == 'success']">
 				<set-payload value="✅ Processed successfully!" />
 			</when>
 			
-			<when expression="#[attributes.queryParams.type == 'fail']">
+			<when expression="#[attributes.queryParams.action == 'fail']">
 				<raise-error type="CUSTOM:PROCESS_FAILURE" description="❌ Forced failure by user request"/>
 			</when>
 			
 			<otherwise>
-				<set-payload value="⚠️ Unknown process type supplied"/>
+				<set-payload value="⚠️ Unknown action supplied"/>
 			</otherwise>
 		</choice>
 
-		<!-- Error Handler -->
 		<error-handler>
 			<on-error-propagate enableNotifications="true" logException="true">
 				<set-payload value='{"error":"Processing failed! Please try again."}'/>
