@@ -1,78 +1,35 @@
-Perfect 👍 — since your base URI is now http://localhost:8081/api, here’s a full list of all endpoints and methods you can test from Postman, Anypoint, or browser for the Social Media API.
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.interfaces.RSAPublicKey;
+import java.util.Base64;
 
-🌐 Base URI
-http://localhost:8081/api
+public class SimpleSSHKeyGenerator {
 
-🧍‍♀️ USERS
-Method	Endpoint	Description	Request Body (if needed)
-GET	/users	Get all users (optional filter by username)	—
-GET	/users?username=jdoe	Filter users by username	—
-POST	/users	Create a new user	{ "username": "jdoe", "displayName": "John Doe", "bio": "Coffee lover" }
-GET	/users/{userId}	Get user by ID	—
-GET	/users/{userId}/posts	Get all posts by a specific user	—
-POST	/users/{userId}/posts	Create post for that user	{ "content": "Hello world!", "hashtags": ["welcome"] }
-📝 POSTS
-Method	Endpoint	Description	Request Body (if needed)
-GET	/posts	Get all posts	—
-GET	/posts?hashtags=travel,food	Filter posts by hashtags	—
-GET	/posts?mentions=jdoe,friend1	Filter posts by mentions	—
-POST	/posts	Create a new post	{ "authorId": "u_123", "content": "Enjoying the beach!", "hashtags": ["travel"] }
-GET	/posts/{postId}	Get a post by ID	—
-PUT	/posts/{postId}	Update a post	{ "content": "Updated caption" }
-DELETE	/posts/{postId}	Delete a post	—
-💬 COMMENTS
-Method	Endpoint	Description	Request Body (if needed)
-GET	/comments	Get all recent comments	—
-GET	/comments/{commentId}	Get comment by ID	—
-GET	/posts/{postId}/comments	Get comments for a post	—
-POST	/posts/{postId}/comments	Add comment to a post	{ "authorId": "u_222", "content": "Nice post!" }
-❤️ LIKES
-Method	Endpoint	Description	Request Body (if needed)
-GET	/likes	Get all likes	—
-POST	/posts/{postId}/likes	Like a post	{ "userId": "u_123" }
-DELETE	/posts/{postId}/likes	Unlike a post	—
-🧾 QUERY PARAMETERS SUPPORTED
-Resource	Parameter	Example	Description
-/users	username	/users?username=jdoe	Filter by username
-/posts	hashtags	/posts?hashtags=travel,food	Filter posts with specific hashtags
-/posts	mentions	/posts?mentions=friend1	Filter posts mentioning a user
-/posts	limit & offset	/posts?limit=10&offset=20	Pagination
-⚙️ RATE LIMIT HEADERS (Returned in responses)
+    public static void main(String[] args) {
+        try {
+            // Generate RSA key pair (2048-bit)
+            KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
+            keyGen.initialize(2048);
+            KeyPair keyPair = keyGen.generateKeyPair();
 
-Each API response may include these headers to indicate your rate limit status:
+            // Convert to PEM (Private Key)
+            String privateKeyPEM = Base64.getEncoder().encodeToString(keyPair.getPrivate().getEncoded());
+            privateKeyPEM = "-----BEGIN PRIVATE KEY-----\n" +
+                            privateKeyPEM +
+                            "\n-----END PRIVATE KEY-----";
 
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 98
-X-RateLimit-Reset: 1735660000
+            // Convert to SSH Public Key format
+            RSAPublicKey pub = (RSAPublicKey) keyPair.getPublic();
+            String publicKeyBase64 = Base64.getEncoder().encodeToString(pub.getEncoded());
+            String publicKeySSH = "ssh-rsa " + publicKeyBase64 + " user@localhost";
 
-🩺 HEALTH CHECK
-Method	Endpoint	Description
-GET	/health	Quick check if API is running
+            // Print both keys
+            System.out.println("✅ SSH Key Pair Generated Successfully!");
+            System.out.println("\nPublic Key (add this to authorized_keys):\n" + publicKeySSH);
+            System.out.println("\nPrivate Key (keep it safe):\n" + privateKeyPEM);
 
-Example output:
-
-{
-  "status": "ok",
-  "time": "2025-10-31T00:00:00Z"
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 }
-
-
-✅ To Test Quickly in Postman:
-
-Set Base URL: http://localhost:8081/api
-
-Test sequentially:
-
-GET /health
-
-GET /users
-
-POST /users
-
-GET /posts
-
-POST /posts
-
-GET /posts/{id}/comments
-
-POST /posts/{id}/likes
