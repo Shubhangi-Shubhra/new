@@ -1,109 +1,389 @@
-Below is a simple MuleSoft POC that:
+#%RAML 1.0
+title: Social Media API - POC 3
+version: v1
+baseUri: http://localhost:8081/api/{version}
+mediaType: application/json
 
-✅ Reads an XML file
-✅ Converts XML → JSON using DataWeave
-✅ Writes JSON into output folder
+description: |
+  A sample social media API with users, posts, comments, and likes.
+  Includes filtering with query parameters and rate-limit headers.
 
-No external connectors — only File + Transform 💯
+/**
+ * ---------- SECURITY ----------
+ */
+securitySchemes:
+  oauth_2_0:
+    description: OAuth 2.0 scheme for protected operations
+    type: OAuth 2.0
+    settings:
+      authorizationUri: https://auth.example.com/authorize
+      accessTokenUri: https://auth.example.com/token
+      authorizationGrants: [ authorization_code, client_credentials ]
 
-✅ Input XML (place in C:/mule/input/data.xml)
-<employees>
-  <employee>
-    <id>1</id>
-    <name>Shubhangi</name>
-  </employee>
-  <employee>
-    <id>2</id>
-    <name>Akshit</name>
-  </employee>
-</employees>
+/**
+ * ---------- FRAGMENTS ----------
+ */
+traits:
+  rateLimited:
+    description: Adds standard rate-limit headers
+    headers:
+      X-RateLimit-Limit:
+        description: Max requests allowed per window
+        type: integer
+      X-RateLimit-Remaining:
+        description: Remaining requests in current window
+        type: integer
+      X-RateLimit-Reset:
+        description: UNIX timestamp when the rate limit resets
+        type: integer
 
-✅ Output JSON (Mule will create)
-{
-  "employees": {
-    "employee": [
-      {
-        "id": "1",
-        "name": "Shubhangi"
-      },
-      {
-        "id": "2",
-        "name": "Akshit"
-      }
-    ]
-  }
-}
+resourceTypes:
+  collection:
+    usage: Use for collection endpoints
+    get:
+      is: [ rateLimited ]
+      queryParameters:
+        limit:
+          type: integer
+          required: false
+          default: 20
+          description: Number of records to return
+        offset:
+          type: integer
+          required: false
+          default: 0
+          description: Offset for pagination
+      responses:
+        200:
+          body:
+            application/json:
+              type: object
+              properties:
+                count: integer
+                items: any[]
+    post:
+      is: [ rateLimited ]
+      securedBy: [ oauth_2_0 ]
+      body:
+        application/json:
+          type: object
+      responses:
+        201:
+          body:
+            application/json:
+              type: object
 
-✅ Mule XML Flow (Copy-Paste)
-<?xml version="1.0" encoding="UTF-8"?>
-<mule xmlns:file="http://www.mulesoft.org/schema/mule/file"
-      xmlns="http://www.mulesoft.org/schema/mule/core"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xsi:schemaLocation="
-      http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-      http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd">
+/**
+ * ---------- TYPES ----------
+ */
+types:
+  User:
+    type: object
+    properties:
+      id: string
+      username: string
+      displayName?: string
+      bio?: string
+      followersCount?: integer
+      followingCount?: integer
+      createdAt: datetime
+    example:
+      id: "u_12345"
+      username: "jdoe"
+      displayName: "John Doe"
+      bio: "Coffee & code"
+      followersCount: 1200
+      followingCount: 300
+      createdAt: "2024-01-10T10:00:00Z"
 
-    <!-- File Folder Config -->
-    <file:config name="File_Config">
-        <file:connection workingDir="C:/mule"/>
-    </file:config>
+  Post:
+    type: object
+    properties:
+      id: string
+      authorId: string
+      content: string
+      hashtags?: string[]
+      mentions?: string[]
+      attachments?: string[]
+      likeCount?: integer
+      commentCount?: integer
+      createdAt: datetime
+    example:
+      id: "p_98765"
+      authorId: "u_12345"
+      content: "Loving the fall — #autumn #cozy"
+      hashtags: ["autumn","cozy"]
+      mentions: ["friend1"]
+      likeCount: 10
+      commentCount: 2
+      createdAt: "2025-10-01T08:30:00Z"
 
-    <flow name="xml-to-json-flow">
-        <!-- Trigger manually or via HTTP if you want -->
-        <scheduler>
-            <scheduling-strategy>
-                <fixed-frequency frequency="10000"/>  <!-- runs every 10 sec -->
-            </scheduling-strategy>
-        </scheduler>
+  Comment:
+    type: object
+    properties:
+      id: string
+      postId: string
+      authorId: string
+      content: string
+      createdAt: datetime
+    example:
+      id: "c_333"
+      postId: "p_98765"
+      authorId: "u_555"
+      content: "Nice shot!"
+      createdAt: "2025-10-01T09:00:00Z"
 
-        <!-- Read XML file -->
-        <file:read config-ref="File_Config" path="input/data.xml" />
+  Like:
+    type: object
+    properties:
+      id: string
+      postId: string
+      userId: string
+      createdAt: datetime
+    example:
+      id: "l_777"
+      postId: "p_98765"
+      userId: "u_12345"
+      createdAt: "2025-10-01T09:05:00Z"
 
-        <!-- Convert XML to JSON -->
-        <ee:transform>
-            <ee:message>
-                <ee:set-payload><![CDATA[
-                    %dw 2.0
-                    output application/json
-                    ---
-                    payload
-                ]]></ee:set-payload>
-            </ee:message>
-        </ee:transform>
+  Error:
+    type: object
+    properties:
+      code: integer
+      message: string
 
-        <!-- Write JSON to file -->
-        <file:write config-ref="File_Config"
-                    path="#['output/result_' ++ now() ++ '.json']"
-                    mode="CREATE_NEW"/>
+/**
+ * ---------- RESOURCES ----------
+ */
 
-    </flow>
-</mule>
+/health:
+  get:
+    description: Health check
+    responses:
+      200:
+        body:
+          application/json:
+            example:
+              status: ok
+              time: "2025-10-31T00:00:00Z"
 
-✅ Folder Setup
+/users:
+  type: collection
+  get:
+    description: Get all users
+    queryParameters:
+      username:
+        description: Filter users by username
+        type: string
+        required: false
+    responses:
+      200:
+        body:
+          application/json:
+            type: object
+            properties:
+              count: integer
+              items: User[]
+  post:
+    description: Create a new user
+    body:
+      application/json:
+        type: User
+    responses:
+      201:
+        body:
+          application/json:
+            type: User
 
-Make sure these exist:
+  /{userId}:
+    uriParameters:
+      userId: string
+    get:
+      description: Get user by ID
+      responses:
+        200:
+          body:
+            application/json:
+              type: User
+        404:
+          body:
+            application/json:
+              type: Error
 
-C:/mule/input
-C:/mule/output
+    /posts:
+      type: collection
+      get:
+        description: Get posts created by user
+        responses:
+          200:
+            body:
+              application/json:
+                type: object
+                properties:
+                  count: integer
+                  items: Post[]
+      post:
+        description: Create post for this user
+        body:
+          application/json:
+            type: Post
+        responses:
+          201:
+            body:
+              application/json:
+                type: Post
 
+/posts:
+  type: collection
+  get:
+    description: |
+      List all posts.  
+      Supports filtering using query parameters:
+      - hashtags: Filter by hashtags
+      - mentions: Filter by user mentions
+    queryParameters:
+      hashtags:
+        type: string
+        required: false
+        example: "food,travel"
+        description: "Filter posts with these hashtags (comma-separated)"
+      mentions:
+        type: string
+        required: false
+        example: "jdoe,friend1"
+        description: "Filter posts mentioning these usernames"
+      limit:
+        type: integer
+        default: 20
+      offset:
+        type: integer
+        default: 0
+    responses:
+      200:
+        body:
+          application/json:
+            type: object
+            properties:
+              count: integer
+              items: Post[]
+  post:
+    description: Create new post
+    securedBy: [ oauth_2_0 ]
+    body:
+      application/json:
+        type: Post
+    responses:
+      201:
+        body:
+          application/json:
+            type: Post
 
-Put data.xml inside input folder.
+  /{postId}:
+    uriParameters:
+      postId: string
+    get:
+      description: Get a post by ID
+      responses:
+        200:
+          body:
+            application/json:
+              type: Post
+        404:
+          body:
+            application/json:
+              type: Error
+    put:
+      description: Update a post
+      securedBy: [ oauth_2_0 ]
+      body:
+        application/json:
+          type: Post
+      responses:
+        200:
+          body:
+            application/json:
+              type: Post
+    delete:
+      description: Delete a post
+      securedBy: [ oauth_2_0 ]
+      responses:
+        204:
+          description: Post deleted
 
-✅ Run
+    /comments:
+      type: collection
+      get:
+        description: Get comments for a post
+        responses:
+          200:
+            body:
+              application/json:
+                type: object
+                properties:
+                  count: integer
+                  items: Comment[]
+      post:
+        description: Add comment to post
+        body:
+          application/json:
+            type: Comment
+        responses:
+          201:
+            body:
+              application/json:
+                type: Comment
 
-1️⃣ Run the Mule App
-2️⃣ Wait for scheduler
-3️⃣ Check C:/mule/output 🎉
+    /likes:
+      post:
+        description: Like a post
+        securedBy: [ oauth_2_0 ]
+        body:
+          application/json:
+            type: Like
+        responses:
+          201:
+            body:
+              application/json:
+                type: Like
+      delete:
+        description: Remove like from post
+        securedBy: [ oauth_2_0 ]
+        responses:
+          204:
+            description: Like removed
 
-➕ Want Trigger via HTTP Instead?
+/comments:
+  type: collection
+  get:
+    description: Get all recent comments
+    responses:
+      200:
+        body:
+          application/json:
+            type: object
+            properties:
+              count: integer
+              items: Comment[]
+  /{commentId}:
+    uriParameters:
+      commentId: string
+    get:
+      description: Get comment by ID
+      responses:
+        200:
+          body:
+            application/json:
+              type: Comment
 
-Tell me and I will give you HTTP version of flow too 🍀
-
-Reply with what you want next:
-
-1️⃣ JSON → XML conversion
-2️⃣ Convert XML → CSV
-3️⃣ Error handling example for file not found
-4️⃣ File processed move to /processed/ folder
-
-Just tell the number 😊
+/likes:
+  type: collection
+  get:
+    description: Get all likes globally
+    responses:
+      200:
+        body:
+          application/json:
+            type: object
+            properties:
+              count: integer
+              items: Like[]
