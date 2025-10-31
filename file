@@ -1,389 +1,78 @@
-#%RAML 1.0
-title: Social Media API - POC 3
-version: v1
-baseUri: http://localhost:8081/api/{version}
-mediaType: application/json
+Perfect 👍 — since your base URI is now http://localhost:8081/api, here’s a full list of all endpoints and methods you can test from Postman, Anypoint, or browser for the Social Media API.
 
-description: |
-  A sample social media API with users, posts, comments, and likes.
-  Includes filtering with query parameters and rate-limit headers.
+🌐 Base URI
+http://localhost:8081/api
 
-/**
- * ---------- SECURITY ----------
- */
-securitySchemes:
-  oauth_2_0:
-    description: OAuth 2.0 scheme for protected operations
-    type: OAuth 2.0
-    settings:
-      authorizationUri: https://auth.example.com/authorize
-      accessTokenUri: https://auth.example.com/token
-      authorizationGrants: [ authorization_code, client_credentials ]
+🧍‍♀️ USERS
+Method	Endpoint	Description	Request Body (if needed)
+GET	/users	Get all users (optional filter by username)	—
+GET	/users?username=jdoe	Filter users by username	—
+POST	/users	Create a new user	{ "username": "jdoe", "displayName": "John Doe", "bio": "Coffee lover" }
+GET	/users/{userId}	Get user by ID	—
+GET	/users/{userId}/posts	Get all posts by a specific user	—
+POST	/users/{userId}/posts	Create post for that user	{ "content": "Hello world!", "hashtags": ["welcome"] }
+📝 POSTS
+Method	Endpoint	Description	Request Body (if needed)
+GET	/posts	Get all posts	—
+GET	/posts?hashtags=travel,food	Filter posts by hashtags	—
+GET	/posts?mentions=jdoe,friend1	Filter posts by mentions	—
+POST	/posts	Create a new post	{ "authorId": "u_123", "content": "Enjoying the beach!", "hashtags": ["travel"] }
+GET	/posts/{postId}	Get a post by ID	—
+PUT	/posts/{postId}	Update a post	{ "content": "Updated caption" }
+DELETE	/posts/{postId}	Delete a post	—
+💬 COMMENTS
+Method	Endpoint	Description	Request Body (if needed)
+GET	/comments	Get all recent comments	—
+GET	/comments/{commentId}	Get comment by ID	—
+GET	/posts/{postId}/comments	Get comments for a post	—
+POST	/posts/{postId}/comments	Add comment to a post	{ "authorId": "u_222", "content": "Nice post!" }
+❤️ LIKES
+Method	Endpoint	Description	Request Body (if needed)
+GET	/likes	Get all likes	—
+POST	/posts/{postId}/likes	Like a post	{ "userId": "u_123" }
+DELETE	/posts/{postId}/likes	Unlike a post	—
+🧾 QUERY PARAMETERS SUPPORTED
+Resource	Parameter	Example	Description
+/users	username	/users?username=jdoe	Filter by username
+/posts	hashtags	/posts?hashtags=travel,food	Filter posts with specific hashtags
+/posts	mentions	/posts?mentions=friend1	Filter posts mentioning a user
+/posts	limit & offset	/posts?limit=10&offset=20	Pagination
+⚙️ RATE LIMIT HEADERS (Returned in responses)
 
-/**
- * ---------- FRAGMENTS ----------
- */
-traits:
-  rateLimited:
-    description: Adds standard rate-limit headers
-    headers:
-      X-RateLimit-Limit:
-        description: Max requests allowed per window
-        type: integer
-      X-RateLimit-Remaining:
-        description: Remaining requests in current window
-        type: integer
-      X-RateLimit-Reset:
-        description: UNIX timestamp when the rate limit resets
-        type: integer
+Each API response may include these headers to indicate your rate limit status:
 
-resourceTypes:
-  collection:
-    usage: Use for collection endpoints
-    get:
-      is: [ rateLimited ]
-      queryParameters:
-        limit:
-          type: integer
-          required: false
-          default: 20
-          description: Number of records to return
-        offset:
-          type: integer
-          required: false
-          default: 0
-          description: Offset for pagination
-      responses:
-        200:
-          body:
-            application/json:
-              type: object
-              properties:
-                count: integer
-                items: any[]
-    post:
-      is: [ rateLimited ]
-      securedBy: [ oauth_2_0 ]
-      body:
-        application/json:
-          type: object
-      responses:
-        201:
-          body:
-            application/json:
-              type: object
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 98
+X-RateLimit-Reset: 1735660000
 
-/**
- * ---------- TYPES ----------
- */
-types:
-  User:
-    type: object
-    properties:
-      id: string
-      username: string
-      displayName?: string
-      bio?: string
-      followersCount?: integer
-      followingCount?: integer
-      createdAt: datetime
-    example:
-      id: "u_12345"
-      username: "jdoe"
-      displayName: "John Doe"
-      bio: "Coffee & code"
-      followersCount: 1200
-      followingCount: 300
-      createdAt: "2024-01-10T10:00:00Z"
+🩺 HEALTH CHECK
+Method	Endpoint	Description
+GET	/health	Quick check if API is running
 
-  Post:
-    type: object
-    properties:
-      id: string
-      authorId: string
-      content: string
-      hashtags?: string[]
-      mentions?: string[]
-      attachments?: string[]
-      likeCount?: integer
-      commentCount?: integer
-      createdAt: datetime
-    example:
-      id: "p_98765"
-      authorId: "u_12345"
-      content: "Loving the fall — #autumn #cozy"
-      hashtags: ["autumn","cozy"]
-      mentions: ["friend1"]
-      likeCount: 10
-      commentCount: 2
-      createdAt: "2025-10-01T08:30:00Z"
+Example output:
 
-  Comment:
-    type: object
-    properties:
-      id: string
-      postId: string
-      authorId: string
-      content: string
-      createdAt: datetime
-    example:
-      id: "c_333"
-      postId: "p_98765"
-      authorId: "u_555"
-      content: "Nice shot!"
-      createdAt: "2025-10-01T09:00:00Z"
+{
+  "status": "ok",
+  "time": "2025-10-31T00:00:00Z"
+}
 
-  Like:
-    type: object
-    properties:
-      id: string
-      postId: string
-      userId: string
-      createdAt: datetime
-    example:
-      id: "l_777"
-      postId: "p_98765"
-      userId: "u_12345"
-      createdAt: "2025-10-01T09:05:00Z"
 
-  Error:
-    type: object
-    properties:
-      code: integer
-      message: string
+✅ To Test Quickly in Postman:
 
-/**
- * ---------- RESOURCES ----------
- */
+Set Base URL: http://localhost:8081/api
 
-/health:
-  get:
-    description: Health check
-    responses:
-      200:
-        body:
-          application/json:
-            example:
-              status: ok
-              time: "2025-10-31T00:00:00Z"
+Test sequentially:
 
-/users:
-  type: collection
-  get:
-    description: Get all users
-    queryParameters:
-      username:
-        description: Filter users by username
-        type: string
-        required: false
-    responses:
-      200:
-        body:
-          application/json:
-            type: object
-            properties:
-              count: integer
-              items: User[]
-  post:
-    description: Create a new user
-    body:
-      application/json:
-        type: User
-    responses:
-      201:
-        body:
-          application/json:
-            type: User
+GET /health
 
-  /{userId}:
-    uriParameters:
-      userId: string
-    get:
-      description: Get user by ID
-      responses:
-        200:
-          body:
-            application/json:
-              type: User
-        404:
-          body:
-            application/json:
-              type: Error
+GET /users
 
-    /posts:
-      type: collection
-      get:
-        description: Get posts created by user
-        responses:
-          200:
-            body:
-              application/json:
-                type: object
-                properties:
-                  count: integer
-                  items: Post[]
-      post:
-        description: Create post for this user
-        body:
-          application/json:
-            type: Post
-        responses:
-          201:
-            body:
-              application/json:
-                type: Post
+POST /users
 
-/posts:
-  type: collection
-  get:
-    description: |
-      List all posts.  
-      Supports filtering using query parameters:
-      - hashtags: Filter by hashtags
-      - mentions: Filter by user mentions
-    queryParameters:
-      hashtags:
-        type: string
-        required: false
-        example: "food,travel"
-        description: "Filter posts with these hashtags (comma-separated)"
-      mentions:
-        type: string
-        required: false
-        example: "jdoe,friend1"
-        description: "Filter posts mentioning these usernames"
-      limit:
-        type: integer
-        default: 20
-      offset:
-        type: integer
-        default: 0
-    responses:
-      200:
-        body:
-          application/json:
-            type: object
-            properties:
-              count: integer
-              items: Post[]
-  post:
-    description: Create new post
-    securedBy: [ oauth_2_0 ]
-    body:
-      application/json:
-        type: Post
-    responses:
-      201:
-        body:
-          application/json:
-            type: Post
+GET /posts
 
-  /{postId}:
-    uriParameters:
-      postId: string
-    get:
-      description: Get a post by ID
-      responses:
-        200:
-          body:
-            application/json:
-              type: Post
-        404:
-          body:
-            application/json:
-              type: Error
-    put:
-      description: Update a post
-      securedBy: [ oauth_2_0 ]
-      body:
-        application/json:
-          type: Post
-      responses:
-        200:
-          body:
-            application/json:
-              type: Post
-    delete:
-      description: Delete a post
-      securedBy: [ oauth_2_0 ]
-      responses:
-        204:
-          description: Post deleted
+POST /posts
 
-    /comments:
-      type: collection
-      get:
-        description: Get comments for a post
-        responses:
-          200:
-            body:
-              application/json:
-                type: object
-                properties:
-                  count: integer
-                  items: Comment[]
-      post:
-        description: Add comment to post
-        body:
-          application/json:
-            type: Comment
-        responses:
-          201:
-            body:
-              application/json:
-                type: Comment
+GET /posts/{id}/comments
 
-    /likes:
-      post:
-        description: Like a post
-        securedBy: [ oauth_2_0 ]
-        body:
-          application/json:
-            type: Like
-        responses:
-          201:
-            body:
-              application/json:
-                type: Like
-      delete:
-        description: Remove like from post
-        securedBy: [ oauth_2_0 ]
-        responses:
-          204:
-            description: Like removed
-
-/comments:
-  type: collection
-  get:
-    description: Get all recent comments
-    responses:
-      200:
-        body:
-          application/json:
-            type: object
-            properties:
-              count: integer
-              items: Comment[]
-  /{commentId}:
-    uriParameters:
-      commentId: string
-    get:
-      description: Get comment by ID
-      responses:
-        200:
-          body:
-            application/json:
-              type: Comment
-
-/likes:
-  type: collection
-  get:
-    description: Get all likes globally
-    responses:
-      200:
-        body:
-          application/json:
-            type: object
-            properties:
-              count: integer
-              items: Like[]
+POST /posts/{id}/likes
