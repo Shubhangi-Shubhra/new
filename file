@@ -8,6 +8,32 @@ divideBy(payload, 2)
 output application/java --- "Created " ++ (vars.batchCount as String) ++ " batches"
 output application/java --- "Processing batch " ++ (vars.batchCounter as String)
 
+%dw 2.0
+output application/json
+---
+{
+	batchId: vars.batchCounter,
+	recordCount: sizeOf(payload),
+	mergedData: {
+		ids: payload.id joinBy ",",
+		names: payload.name joinBy " | ",
+		emails: payload.email joinBy " | ",
+		totalAmount: sum(payload.amount),
+		statuses: payload.status joinBy " | "
+	},
+	originalRecords: payload,
+	processedAt: now()
+}
+
+
+output application/java --- "batch_" ++ (vars.batchCounter as String) ++ "_" ++ (now() as String {format: "yyyyMMdd_HHmmss_SSS"}) ++ ".json"
+output application/java --- "Merged " ++ (payload.recordCount as String) ++ " records - Writing to: " ++ vars.outputFilename
+"output/" ++ vars.outputFilename
+output application/json --- payload
+output application/java --- "Batch file created: " ++ vars.outputFilename
+output application/java --- "All " ++ (vars.batchCount as String) ++ " batches processed successfully"
+output application/java --- "processed/input_" ++ (now() as String {format: "yyyyMMdd_HHmmss"}) ++ ".csv"
+output application/java --- "Error processing CSV: " ++ error.description
 
 <!-- File Configuration -->
 	<file:config name="File_Config" doc:name="File Config">
