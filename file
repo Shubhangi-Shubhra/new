@@ -1,3 +1,4 @@
+FILE:ILLEGAL_PATH, FILE:FILE_DOESNT_EXIST
 output application/java --- "Total records in file: " ++ (vars.totalRecords as String)
 %dw 2.0
 output application/json
