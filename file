@@ -1,120 +1,109 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<mule xmlns:file="http://www.mulesoft.org/schema/mule/file"
-	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
-	xmlns="http://www.mulesoft.org/schema/mule/core"
-	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="
-		http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-		http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
-		http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd">
-	
-	<!-- File Configuration -->
-	<file:config name="File_Config" doc:name="File Config">
-		<file:connection workingDir="C:/mule-csv"/>
-	</file:config>
-	
-	<!-- Main Flow: Scheduled CSV Processing -->
-	<flow name="scheduled-csv-processor-flow" doc:name="scheduled-csv-processor-flow">
-		<!-- Scheduler: Runs every 1 minute -->
-		<scheduler doc:name="Every 1 Minute">
-			<scheduling-strategy>
-				<fixed-frequency frequency="1" timeUnit="MINUTES"/>
-			</scheduling-strategy>
-		</scheduler>
-		
-		<logger level="INFO" doc:name="Scheduler Started" message="CSV Processor started - Checking for files"/>
-		
-		<!-- Try to Read CSV File -->
-		<try doc:name="Try Read CSV">
-			<!-- Check if file exists and read it -->
-			<file:read doc:name="Read CSV File" config-ref="File_Config" path="input/input.csv"/>
-			
-			<logger level="INFO" doc:name="File Found" message="CSV file found - Processing records"/>
-			
-			<!-- Parse CSV to JSON -->
-			<ee:transform doc:name="Parse CSV to JSON">
-				<ee:message>
-					<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-payload]]></ee:set-payload>
-				</ee:message>
-			</ee:transform>
-			
-			<set-variable value="#[sizeOf(payload)]" doc:name="Store Total Count" variableName="totalRecords"/>
-			
-			<logger level="INFO" doc:name="Log Total Records" message='#[output application/java --- "Total records in file: " ++ (vars.totalRecords as String)]'/>
-			
-			<!-- Split into batches of 2 and process -->
-			<ee:transform doc:name="Create Batches of 2">
-				<ee:message>
-					<ee:set-payload><![CDATA[%dw 2.0
-output application/json
-import divideBy from dw::core::Arrays
----
-divideBy(payload, 2)]]></ee:set-payload>
-				</ee:message>
-			</ee:transform>
-			
-			<set-variable value="#[sizeOf(payload)]" doc:name="Store Batch Count" variableName="batchCount"/>
-			
-			<logger level="INFO" doc:name="Log Batch Count" message='#[output application/java --- "Created " ++ (vars.batchCount as String) ++ " batches"]'/>
-			
-			<!-- Process each batch -->
-			<foreach doc:name="For Each Batch" counterVariableName="batchCounter">
-				<logger level="INFO" doc:name="Processing Batch" message='#[output application/java --- "Processing batch " ++ (vars.batchCounter as String)]'/>
-				
-				<!-- Merge 2 records into 1 -->
-				<ee:transform doc:name="Merge Records">
-					<ee:message>
-						<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	batchId: vars.batchCounter,
-	recordCount: sizeOf(payload),
-	mergedData: {
-		ids: payload.id joinBy ",",
-		names: payload.name joinBy " | ",
-		emails: payload.email joinBy " | ",
-		totalAmount: sum(payload.amount),
-		statuses: payload.status joinBy " | "
-	},
-	originalRecords: payload,
-	processedAt: now()
-}]]></ee:set-payload>
-					</ee:message>
-				</ee:transform>
-				
-				<!-- Generate unique filename -->
-				<set-variable value='#[output application/java --- "batch_" ++ (vars.batchCounter as String) ++ "_" ++ (now() as String {format: "yyyyMMdd_HHmmss_SSS"}) ++ ".json"]' doc:name="Generate Filename" variableName="outputFilename"/>
-				
-				<logger level="INFO" doc:name="Log Merge" message='#[output application/java --- "Merged " ++ (payload.recordCount as String) ++ " records - Writing to: " ++ vars.outputFilename]'/>
-				
-				<!-- Write merged record to output file -->
-				<file:write doc:name="Write Output File" config-ref="File_Config" path='#["output/" ++ vars.outputFilename]' createParentDirectories="true">
-					<file:content><![CDATA[#[output application/json --- payload]]]></file:content>
-				</file:write>
-				
-				<logger level="INFO" doc:name="Batch Written" message='#[output application/java --- "Batch file created: " ++ vars.outputFilename]'/>
-			</foreach>
-			
-			<logger level="INFO" doc:name="All Batches Complete" message='#[output application/java --- "All " ++ (vars.batchCount as String) ++ " batches processed successfully"]'/>
-			
-			<!-- Move processed file -->
-			<file:move doc:name="Move to Processed" config-ref="File_Config" sourcePath="input/input.csv" targetPath='#[output application/java --- "processed/input_" ++ (now() as String {format: "yyyyMMdd_HHmmss"}) ++ ".csv"]' overwrite="true" createParentDirectories="true"/>
-			
-			<logger level="INFO" doc:name="Processing Complete" message="CSV file processed and moved to processed folder"/>
-			
-			<error-handler>
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" type="FILE:ILLEGAL_PATH, FILE:FILE_DOESNT_EXIST">
-					<logger level="WARN" doc:name="No File Found" message="No CSV file found in input folder"/>
-				</on-error-continue>
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" type="ANY">
-					<logger level="ERROR" doc:name="Processing Error" message='#[output application/java --- "Error processing CSV: " ++ error.description]'/>
-				</on-error-continue>
-			</error-handler>
-		</try>
-	</flow>
-</mule>
+<project xmlns="http://maven.apache.org/POM/4.0.0" 
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+<modelVersion>4.0.0</modelVersion>
+
+<groupId>com.mycompany</groupId>
+<artifactId>csv-batch-processor</artifactId>
+<version>1.0.0-SNAPSHOT</version>
+<packaging>mule-application</packaging>
+
+<name>csv-batch-processor</name>
+
+<properties>
+<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+<app.runtime>4.9.0</app.runtime>
+<mule.maven.plugin.version>4.3.0</mule.maven.plugin.version>
+</properties>
+
+<build>
+<plugins>
+<plugin>
+<groupId>org.apache.maven.plugins</groupId>
+<artifactId>maven-clean-plugin</artifactId>
+<version>3.2.0</version>
+</plugin>
+<plugin>
+<groupId>org.mule.tools.maven</groupId>
+<artifactId>mule-maven-plugin</artifactId>
+<version>${mule.maven.plugin.version}</version>
+<extensions>true</extensions>
+</plugin>
+</plugins>
+</build>
+
+<dependencies>
+<dependency>
+<groupId>org.mule.connectors</groupId>
+<artifactId>mule-http-connector</artifactId>
+<version>1.10.3</version>
+<classifier>mule-plugin</classifier>
+</dependency>
+
+<dependency>
+<groupId>org.mule.connectors</groupId>
+<artifactId>mule-file-connector</artifactId>
+<version>1.5.4</version>
+<classifier>mule-plugin</classifier>
+</dependency>
+
+<dependency>
+<groupId>org.mule.connectors</groupId>
+<artifactId>mule-sockets-connector</artifactId>
+<version>1.2.5</version>
+<classifier>mule-plugin</classifier>
+</dependency>
+</dependencies>
+
+<repositories>
+<repository>
+<id>anypoint-exchange-v3</id>
+<name>Anypoint Exchange</name>
+<url>https://maven.anypoint.mulesoft.com/api/v3/maven</url>
+<layout>default</layout>
+</repository>
+<repository>
+<id>mulesoft-releases</id>
+<name>MuleSoft Releases Repository</name>
+<url>https://repository.mulesoft.org/releases/</url>
+<layout>default</layout>
+</repository>
+</repositories>
+
+<pluginRepositories>
+<pluginRepository>
+<id>mulesoft-releases</id>
+<name>MuleSoft Releases Repository</name>
+<layout>default</layout>
+<url>https://repository.mulesoft.org/releases/</url>
+<snapshots>
+<enabled>false</enabled>
+</snapshots>
+</pluginRepository>
+</pluginRepositories>
+
+</project>
+
+
+
+
+
+
+
+
+
+id,name,email,amount,status
+1,John Doe,john@example.com,1000,Active
+2,Jane Smith,jane@example.com,1500,Active
+3,Bob Wilson,bob@example.com,2000,Pending
+4,Alice Brown,alice@example.com,2500,Active
+5,Charlie Davis,charlie@example.com,3000,Pending
+
+
+
+
+
+
+
