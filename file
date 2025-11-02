@@ -1,3 +1,14 @@
+output application/java --- "Total records in file: " ++ (vars.totalRecords as String)
+%dw 2.0
+output application/json
+import divideBy from dw::core::Arrays
+---
+divideBy(payload, 2)
+
+output application/java --- "Created " ++ (vars.batchCount as String) ++ " batches"
+output application/java --- "Processing batch " ++ (vars.batchCounter as String)
+
+
 <!-- File Configuration -->
 	<file:config name="File_Config" doc:name="File Config">
 		<file:connection workingDir="C:/mule-csv"/>
