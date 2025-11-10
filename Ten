@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+
+    <http:listener-config name="HTTP_Listener_Config" doc:name="HTTP Listener config">
+        <http:listener-connection host="0.0.0.0" port="8081" />
+    </http:listener-config>
+
+    <db:config name="Database_Config" doc:name="Database config">
+        <db:generic-connection url="jdbc:mysql://localhost:3306/onboardingdb" user="root" password="password" driverClassName="com.mysql.jdbc.Driver"/>
+    </db:config>
+
+    <flow name="resource-onboarding-flow" doc:id="resource-onboarding-flow">
+        <http:listener doc:name="Listener" config-ref="HTTP_Listener_Config" path="/resource/onboarding" allowedMethods="POST"/>
+        <set-variable variableName="lobHeader" value="#[attributes.headers.lob]" doc:name="Get LOB Header"/>
+        <parallel-foreach collection="#[payload]" doc:name="Parallel For Each">
+            <set-variable doc:name="sequenceNumber" value="#[vars.parallelForEachCounter]" />
+            <set-variable doc:name="apiId" value="#[vars.lobHeader ++ '_' ++ (vars.sequenceNumber + 1)]" />
+            <try doc:name="Try Insert">
+                <db:insert doc:name="DB Insert" config-ref="Database_Config">
+                    <db:sql>INSERT INTO onboarding_requests (api_id, method, url, client_id) VALUES (:apiId, :method, :url, :clientId)</db:sql>
+                    <db:input-parameters>
+                        #[{
+                          apiId: vars.apiId,
+                          method: payload.method,
+                          url: payload.URL,
+                          clientId: payload.ClientID
+                        }]
+                    </db:input-parameters>
+                </db:insert>
+                <set-payload value="#[{
+                    method: payload.method,
+                    URL: payload.URL,
+                    ClientID: payload.ClientID,
+                    Status: 'success',
+                    Message: 'record successfully inserted',
+                    API_ID: vars.apiId
+                }]" doc:name="Set Success Payload"/>
+                <catch-exception-strategy>
+                    <set-payload value="#[{
+                        method: payload.method,
+                        URL: payload.URL,
+                        ClientID: payload.ClientID,
+                        Status: 'failure',
+                        Message: 'record failed to be inserted',
+                        API_ID: vars.apiId
+                    }]" doc:name="Set Failure Payload"/>
+                </catch-exception-strategy>
+            </try>
+        </parallel-foreach>
+        <set-payload value="#[payload]" doc:name="Gather Results Array"/>
+    </flow>
+</mule>
