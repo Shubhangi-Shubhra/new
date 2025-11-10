@@ -1,0 +1,52 @@
+<flow name="onboardingFlow">
+  <http:listener config-ref="HTTP_Listener_config" path="/resource/onboarding" doc:name="HTTP Listener"/>
+  
+  <set-variable variableName="lob" value="#[attributes.headers.lob]" doc:name="Set lob Variable"/>
+  
+  <set-variable variableName="seqCounter" value="1" doc:name="Initialize seqCounter"/>
+  
+  <foreach doc:name="Parallel For Each" collection="#[payload]" parallel="true">
+  
+    <set-variable variableName="apiId" value="#[vars.lob ++ '_' ++ vars.seqCounter]" doc:name="Set API ID"/>
+    
+    <db:insert config-ref="DB_Config" doc:name="Insert Into DB" >
+      <db:sql ><![CDATA[
+        INSERT INTO PMML_API_REQUEST_DETAILS (API_ID, CLIENT_ID, HTTPS_METHOD, REQUEST_URL, LOB)
+        VALUES (:apiId, :clientId, :httpMethod, :requestUrl, :lob)
+      ]]></db:sql>
+      <db:input-parameters>
+        <db:input-parameter key="apiId" value="#[vars.apiId]" />
+        <db:input-parameter key="clientId" value="#[payload.ClientID]" />
+        <db:input-parameter key="httpMethod" value="#[payload.method]" />
+        <db:input-parameter key="requestUrl" value="#[payload.URL]" />
+        <db:input-parameter key="lob" value="#[vars.lob]" />
+      </db:input-parameters>
+    </db:insert>
+    
+    <choice doc:name="Choice">
+      <when expression="#[attributes.statusCode == 200 or !isEmpty(payload)]"> <!-- Assuming DB insert success -->
+        <set-payload value='{
+          "method": "#[payload.method]",
+          "URL": "#[payload.URL]",
+          "ClientID": "#[payload.ClientID]",
+          "Status": "success",
+          "Message": "record successfully inserted",
+          "API_ID": "#[vars.apiId]"
+        }' mimeType="application/json" doc:name="Set Success Payload"/>
+      </when>
+      <otherwise>
+        <set-payload value='{
+          "method": "#[payload.method]",
+          "URL": "#[payload.URL]",
+          "ClientID": "#[payload.ClientID]",
+          "Status": "failure",
+          "Message": "record failed to insert",
+          "API_ID": "#[vars.apiId]"
+        }' mimeType="application/json" doc:name="Set Failure Payload"/>
+      </otherwise>
+    </choice>
+    
+    <set-variable variableName="seqCounter" value="#[vars.seqCounter + 1]" doc:name="Increment seqCounter"/>
+    
+  </foreach>
+</flow>
