@@ -1,0 +1,77 @@
+<flow name="post:/resource/onboarding:api-config">
+    <set-variable variableName="lob" value="#[attributes.headers.lob]" />
+    <parallel-foreach collection="#[payload]">
+        <try>
+            <db:select config-ref="Database_Config">
+                <db:sql>
+                    SELECT COALESCE(MAX(sequence_number), 0) AS seq 
+                    FROM PMML_API_REQUEST_DETAILS 
+                    WHERE LOB = :lob
+                </db:sql>
+                <db:input-parameters><![CDATA[#[{lob: vars.lob}]]]></db:input-parameters>
+            </db:select>
+
+            <transform doc:name="Generate API ID">
+                <dw:transform-message>
+                    <dw:set-payload><![CDATA[
+                    %dw 2.0
+                    output application/json
+                    var seq = (payload[0].seq as Number) + 1
+                    ---
+                    {
+                        apiId: vars.lob ++ "_" ++ (seq as String),
+                        method: payloadFromParent.
+
+                        url: payloadFromParent.URL,
+                        clientId: payloadFromParent.ClientID,
+                        lob: vars.lob,
+                        sequence: seq
+                    }
+                    ]]></dw:set-payload>
+                </dw:transform-message>
+            </transform>
+
+            <db:insert config-ref="Database_Config">
+                <db:sql>
+                    INSERT INTO PMML_API_REQUEST_DETAILS (API_ID, CLIENT_ID, HTTPS_METHOD, REQUEST_URL, LOB)
+                    VALUES (:apiId, :clientId, :method, :url, :lob)
+                </db:sql>
+                <db:input-parameters><![CDATA[#[payload]]]></db:input-parameters>
+            </db:insert>
+
+            <set-payload>
+                <![CDATA[
+                %dw 2.0
+                output application/json
+                ---
+                {
+                    method: payload.method,
+                    URL: payload.url,
+                    ClientID: payload.clientId,
+                    Status: "success",
+                    Message: "record successfully inserted",
+                    API_ID: payload.apiId
+                }
+                ]]>
+            </set-payload>
+
+            <on-error-continue>
+                <set-payload>
+                    <![CDATA[
+                    %dw 2.0
+                    output application/json
+                    ---
+                    {
+                        method: payload.method,
+                        URL: payload.url,
+                        ClientID: payload.clientId,
+                        Status: "failure",
+                        Message: "record failed to be inserted",
+                        API_ID: payload.apiId
+                    }
+                    ]]>
+                </set-payload>
+            </on-error-continue>
+        </try>
+    </parallel-foreach>
+</flow>
