@@ -1,0 +1,438 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns:http="http://www.mulesoft.org/schema/mule/http"
+xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+xmlns:db="http://www.mulesoft.org/schema/mule/db"
+xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+
+```
+<!-- Implementation Flow for Resource Onboarding -->
+<flow name="post-resource-onboarding-flow">
+    
+    <!-- Step 1: Set Variables from Headers -->
+    <set-variable variableName="lob" value="#[attributes.headers.lob]" doc:name="Set LOB Variable"/>
+    
+    <!-- Step 2: Validate LOB Header -->
+    <choice doc:name="Validate LOB">
+        <when expression="#[vars.lob == null or vars.lob == '']">
+            <ee:transform doc:name="Error Response - Missing LOB">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+```
+
+## output application/json
+
+{
+error: “Bad Request”,
+message: “LOB header is required”
+}]]></ee:set-payload>
+</ee:message>
+<ee:variables>
+<ee:set-variable variableName=“httpStatus”><![CDATA[400]]></ee:set-variable>
+</ee:variables>
+</ee:transform>
+</when>
+<otherwise>
+<!-- Step 3: Get Next Sequence Number for LOB -->
+<db:select config-ref=“Database_Config” doc:name=“Get Next Sequence Number”>
+<db:sql><![CDATA[SELECT COALESCE(MAX(CAST(SUBSTRING(API_ID, LENGTH(:lob) + 2) AS INTEGER)), 0) + 1 AS next_seq
+FROM PMML_API_REQUEST_DETAILS
+WHERE API_ID LIKE CONCAT(:lob, '_%')]]></db:sql>
+<db:input-parameters><![CDATA[#[{
+‘lob’: vars.lob
+}]]]></db:input-parameters>
+</db:select>
+
+```
+            <!-- Step 4: Store Sequence Number -->
+            <set-variable variableName="startSequence" value="#[payload[0].next_seq]" doc:name="Set Start Sequence"/>
+            
+            <!-- Step 5: Transform and Enrich Payload with API_ID -->
+            <ee:transform doc:name="Add API_ID to Each Record">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+```
+
+## output application/json
+var startSeq = vars.startSequence as Number
+
+payload map ((item, index) -> {
+method: item.method,
+URL: item.URL,
+ClientID: item.ClientID,
+API_ID: vars.lob ++ “_” ++ (startSeq + index)
+})]]></ee:set-payload>
+</ee:message>
+</ee:transform>
+
+```
+            <!-- Step 6: Store Enriched Payload -->
+            <set-variable variableName="enrichedPayload" value="#[payload]" doc:name="Store Enriched Payload"/>
+            
+            <!-- Step 7: Parallel ForEach to Insert Records -->
+            <parallel-foreach doc:name="Parallel Insert Records" collection="#[vars.enrichedPayload]" maxConcurrency="10">
+                <try doc:name="Try Insert">
+                    <db:insert config-ref="Database_Config" doc:name="Insert Record">
+                        <db:sql><![CDATA[INSERT INTO PMML_API_REQUEST_DETAILS 
+```
+
+(API_ID, CLIENT_ID, HTTPS_METHOD, REQUEST_URL, LOB)
+VALUES (:apiId, :clientId, :method, :url, :lob)]]></db:sql>
+<db:input-parameters><![CDATA[#[{
+‘apiId’: payload.API_ID,
+‘clientId’: payload.ClientID,
+‘method’: payload.method,
+‘url’: payload.URL,
+‘lob’: vars.lob
+}]]]></db:input-parameters>
+</db:insert>
+
+```
+                    <!-- Success Response -->
+                    <ee:transform doc:name="Success Response">
+                        <ee:message>
+                            <ee:set-payload><![CDATA[%dw 2.0
+```
+
+## output application/json
+
+{
+method: payload.method,
+URL: payload.URL,
+ClientID: payload.ClientID,
+Status: “success”,
+Message: “record successfully inserted”,
+API_ID: payload.API_ID
+}]]></ee:set-payload>
+</ee:message>
+</ee:transform>
+
+```
+                    <error-handler>
+                        <on-error-continue type="ANY">
+                            <!-- Failure Response -->
+                            <ee:transform doc:name="Failure Response">
+                                <ee:message>
+                                    <ee:set-payload><![CDATA[%dw 2.0
+```
+
+## output application/json
+
+{
+method: payload.method,
+URL: payload.URL,
+ClientID: payload.ClientID,
+Status: “failure”,
+Message: “record failed to be inserted: “ ++ error.description,
+API_ID: payload.API_ID
+}]]></ee:set-payload>
+</ee:message>
+</ee:transform>
+</on-error-continue>
+</error-handler>
+</try>
+</parallel-foreach>
+
+```
+            <!-- Step 8: Aggregate Results -->
+            <ee:transform doc:name="Aggregate Results">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+```
+
+## output application/json
+
+payload]]></ee:set-payload>
+</ee:message>
+</ee:transform>
+</otherwise>
+</choice>
+
+```
+    <!-- Step 9: Set HTTP Status -->
+    <choice doc:name="Set HTTP Status">
+        <when expression="#[vars.httpStatus != null]">
+            <set-payload value="#[payload]" doc:name="Set Error Payload"/>
+        </when>
+        <otherwise>
+            <set-payload value="#[payload]" doc:name="Set Success Payload"/>
+        </otherwise>
+    </choice>
+    
+</flow>
+```
+
+</mule>
+
+
+#%RAML 1.0
+title: Resource Onboarding API
+version: v1
+baseUri: https://api.example.com/api/{version}
+mediaType: application/json
+
+types:
+OnboardingRequest:
+type: object
+properties:
+method:
+type: string
+required: true
+enum: [GET, POST, PUT, DELETE, PATCH]
+example: POST
+URL:
+type: string
+required: true
+example: “https://packmule-orc-dev.bankofamerica.com/glpoc/pm-util-gep/v1/api/purchase/order/status”
+ClientID:
+type: string
+required: true
+example: “AIT_70858_PACKDASH”
+
+OnboardingResponse:
+type: object
+properties:
+method:
+type: string
+example: POST
+URL:
+type: string
+example: “https://packmule-orc-dev.bankofamerica.com/glpoc/pm-util-gep/v1/api/purchase/order/status”
+ClientID:
+type: string
+example: “AIT_70858_PACKDASH”
+Status:
+type: string
+enum: [success, failure]
+example: success
+Message:
+type: string
+example: “record successfully inserted”
+API_ID:
+type: string
+example: “GEP_1”
+
+ErrorResponse:
+type: object
+properties:
+error:
+type: string
+example: “Invalid request”
+message:
+type: string
+example: “LOB header is required”
+
+/resource/onboarding:
+post:
+description: Onboard multiple API resources to the system
+headers:
+lob:
+type: string
+required: true
+description: Line of Business identifier (e.g., GEP, CRM, etc.)
+example: GEP
+body:
+application/json:
+type: OnboardingRequest[]
+example: |
+[
+{
+“method”: “POST”,
+“URL”: “https://packmule-orc-dev.bankofamerica.com/glpoc/pm-util-gep/v1/api/purchase/order/status”,
+“ClientID”: “AIT_70858_PACKDASH”
+},
+{
+“method”: “POST”,
+“URL”: “https://packmule-orc-dev.bankofamerica.com/glpoc/pm-util-gep/v1/api/purchase/order/requisition”,
+“ClientID”: “AIT_70858_PACKDASH”
+}
+]
+responses:
+200:
+description: Successfully processed onboarding requests
+body:
+application/json:
+type: OnboardingResponse[]
+example: |
+[
+{
+“method”: “POST”,
+“URL”: “https://packmule-orc-dev.bankofamerica.com/glpoc/pm-util-gep/v1/api/purchase/order/status”,
+“ClientID”: “AIT_70858_PACKDASH”,
+“Status”: “success”,
+“Message”: “record successfully inserted”,
+“API_ID”: “GEP_1”
+},
+{
+“method”: “POST”,
+“URL”: “https://packmule-orc-dev.bankofamerica.com/glpoc/pm-util-gep/v1/api/purchase/order/requisition”,
+“ClientID”: “AIT_70858_PACKDASH”,
+“Status”: “failure”,
+“Message”: “record failed to be inserted”,
+“API_ID”: “GEP_2”
+}
+]
+400:
+description: Bad request - Invalid input
+body:
+application/json:
+type: ErrorResponse
+example: |
+{
+“error”: “Bad Request”,
+“message”: “Invalid payload structure”
+}
+500:
+description: Internal server error
+body:
+application/json:
+type: ErrorResponse
+example: |
+{
+“error”: “Internal Server Error”,
+“message”: “Database connection failed”
+}
+
+
+
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns:http="http://www.mulesoft.org/schema/mule/http"
+xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd">
+
+```
+<!-- HTTP Listener Configuration -->
+<http:listener-config name="HTTP_Listener_Config" doc:name="HTTP Listener config">
+    <http:listener-connection host="0.0.0.0" port="8081"/>
+</http:listener-config>
+
+<!-- APIKit Configuration -->
+<apikit:config name="api-config" api="api-onboarding.raml" outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus"/>
+
+<!-- Main APIKit Flow -->
+<flow name="api-main-flow">
+    <http:listener config-ref="HTTP_Listener_Config" path="/api/*" doc:name="HTTP Listener">
+        <http:response statusCode="#[vars.httpStatus default 200]">
+            <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+        </http:response>
+        <http:error-response statusCode="#[vars.httpStatus default 500]">
+            <http:body>#[payload]</http:body>
+            <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+        </http:error-response>
+    </http:listener>
+    
+    <apikit:router config-ref="api-config" doc:name="APIKit Router"/>
+    
+    <error-handler>
+        <on-error-propagate type="APIKIT:BAD_REQUEST">
+            <ee:transform doc:name="Transform Message">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+```
+
+## output application/json
+
+{
+error: “Bad Request”,
+message: error.description
+}]]></ee:set-payload>
+</ee:message>
+<ee:variables>
+<ee:set-variable variableName=“httpStatus”>400</ee:set-variable>
+</ee:variables>
+</ee:transform>
+</on-error-propagate>
+
+```
+        <on-error-propagate type="APIKIT:NOT_FOUND">
+            <ee:transform doc:name="Transform Message">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+```
+
+## output application/json
+
+{
+error: “Resource Not Found”,
+message: “The requested resource does not exist”
+}]]></ee:set-payload>
+</ee:message>
+<ee:variables>
+<ee:set-variable variableName=“httpStatus”>404</ee:set-variable>
+</ee:variables>
+</ee:transform>
+</on-error-propagate>
+
+```
+        <on-error-propagate type="APIKIT:METHOD_NOT_ALLOWED">
+            <ee:transform doc:name="Transform Message">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+```
+
+## output application/json
+
+{
+error: “Method Not Allowed”,
+message: “The HTTP method is not supported for this resource”
+}]]></ee:set-payload>
+</ee:message>
+<ee:variables>
+<ee:set-variable variableName=“httpStatus”>405</ee:set-variable>
+</ee:variables>
+</ee:transform>
+</on-error-propagate>
+
+```
+        <on-error-propagate type="ANY">
+            <ee:transform doc:name="Transform Message">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+```
+
+## output application/json
+
+{
+error: “Internal Server Error”,
+message: error.description
+}]]></ee:set-payload>
+</ee:message>
+<ee:variables>
+<ee:set-variable variableName=“httpStatus”>500</ee:set-variable>
+</ee:variables>
+</ee:transform>
+</on-error-propagate>
+</error-handler>
+</flow>
+
+```
+<!-- POST /resource/onboarding Router Flow -->
+<flow name="post:\resource\onboarding:api-config">
+    <flow-ref name="post-resource-onboarding-flow" doc:name="Call Implementation Flow"/>
+</flow>
+```
+
+</mule>
+
+
+
+
+
+
+
+
+
+
+
