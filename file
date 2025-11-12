@@ -1,13 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
       xmlns:http="http://www.mulesoft.org/schema/mule/http"
-      xmlns:db="http://www.mulesoft.org/schema/mule/db"
       xmlns="http://www.mulesoft.org/schema/mule/core"
       xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
       xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
                           http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
-                          http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
                           http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
 
     <!-- HTTP Listener Configuration -->
@@ -15,24 +13,16 @@
         <http:listener-connection host="0.0.0.0" port="8081" />
     </http:listener-config>
 
-    <!-- Database Configuration -->
-    <db:config name="Database_Config" doc:name="Database Config">
-        <db:my-sql-connection host="${db.host}" 
-                              port="${db.port}" 
-                              user="${db.user}" 
-                              password="${db.password}" 
-                              database="${db.database}" />
-    </db:config>
-
     <!-- Main Flow -->
     <flow name="resource-onboarding-flow" doc:name="resource-onboarding-flow">
+        <!-- HTTP Listener -->
         <http:listener doc:name="POST /resource/onboarding" 
                        config-ref="HTTP_Listener_config" 
                        path="/resource/onboarding" 
                        allowedMethods="POST"/>
         
-        <!-- Store LOB and Request Array ONLY (no payload modification) -->
-        <ee:transform doc:name="Store LOB and Request Array">
+        <!-- Store LOB header and initialize variables -->
+        <ee:transform doc:name="Initialize Variables">
             <ee:message>
             </ee:message>
             <ee:variables>
@@ -40,46 +30,19 @@
 output application/java
 ---
 attributes.headers.lob]]></ee:set-variable>
-                <ee:set-variable variableName="requestArray"><![CDATA[%dw 2.0
+                <ee:set-variable variableName="responseArray"><![CDATA[%dw 2.0
 output application/json
 ---
-payload]]></ee:set-variable>
-            </ee:variables>
-        </ee:transform>
-        
-        <!-- Call existing select-flow to get sequence -->
-        <flow-ref doc:name="Select Flow (Get Sequence)" name="select-flow"/>
-        
-        <!-- Transform Message BEHIND select-flow to extract sequence and build API_IDs -->
-        <ee:transform doc:name="Extract Sequence and Build API_ID">
-            <ee:message>
-                <ee:set-payload><![CDATA[%dw 2.0
-output application/json
-var startSequence = payload[0].max_seq
----
-vars.requestArray map ((item, index) -> 
-    item ++ {
-        sequenceNumber: startSequence + index,
-        apiId: vars.lob ++ "_" ++ (startSequence + index)
-    }
-)]]></ee:set-payload>
-            </ee:message>
-            <ee:variables>
-                <ee:set-variable variableName="startSequence"><![CDATA[%dw 2.0
+[]]]></ee:set-variable>
+                <ee:set-variable variableName="counter"><![CDATA[%dw 2.0
 output application/java
 ---
-payload[0].max_seq]]></ee:set-variable>
+1]]></ee:set-variable>
             </ee:variables>
         </ee:transform>
         
-        <logger level="INFO" 
-               doc:name="Log Sequence and Enriched Requests" 
-               message="#['Next sequence for LOB ' ++ vars.lob ++ ': ' ++ vars.startSequence]"/>
-        
-        <!-- Process requests in parallel -->
-        <parallel-foreach doc:name="Parallel For Each" 
-                         collection="#[payload]" 
-                         maxConcurrency="10">
+        <!-- Process each request -->
+        <foreach doc:name="For Each Request" collection="#[payload]">
             <try doc:name="Try Insert">
                 <!-- Prepare data for insert-flow -->
                 <ee:transform doc:name="Prepare Insert Data">
@@ -88,7 +51,7 @@ payload[0].max_seq]]></ee:set-variable>
 output application/java
 ---
 {
-    apiId: payload.apiId,
+    apiId: vars.lob ++ "_" ++ vars.counter,
     httpMethod: payload.method,
     requestUrl: payload.URL,
     clientId: payload.ClientID,
@@ -105,7 +68,7 @@ output application/java
                 <ee:transform doc:name="Build Success Response">
                     <ee:message>
                         <ee:set-payload><![CDATA[%dw 2.0
-output application/java
+output application/json
 ---
 {
     method: payload.originalPayload.method,
@@ -118,6 +81,20 @@ output application/java
                     </ee:message>
                 </ee:transform>
                 
+                <!-- Add to response array -->
+                <set-variable value="#[vars.responseArray + [payload]]" 
+                             doc:name="Add to Response Array" 
+                             variableName="responseArray"/>
+                
+                <!-- Increment counter -->
+                <set-variable value="#[vars.counter + 1]" 
+                             doc:name="Increment Counter" 
+                             variableName="counter"/>
+                
+                <logger level="INFO" 
+                       doc:name="Log Success" 
+                       message="#['Successfully inserted: ' ++ payload.API_ID]"/>
+                
                 <error-handler>
                     <on-error-continue enableNotifications="true" 
                                       logException="true" 
@@ -126,109 +103,43 @@ output application/java
                         <ee:transform doc:name="Build Failure Response">
                             <ee:message>
                                 <ee:set-payload><![CDATA[%dw 2.0
-output application/java
+output application/json
 ---
 {
-    method: payload.method default (payload.originalPayload.method default "UNKNOWN"),
-    URL: payload.URL default (payload.originalPayload.URL default "UNKNOWN"),
-    ClientID: payload.ClientID default (payload.originalPayload.ClientID default "UNKNOWN"),
+    method: payload.originalPayload.method,
+    URL: payload.originalPayload.URL,
+    ClientID: payload.originalPayload.ClientID,
     Status: "failure",
     Message: "record failed to insert: " ++ error.description,
-    API_ID: payload.apiId default null
+    API_ID: vars.lob ++ "_" ++ vars.counter
 }]]></ee:set-payload>
                             </ee:message>
                         </ee:transform>
+                        
+                        <!-- Add failure to response array -->
+                        <set-variable value="#[vars.responseArray + [payload]]" 
+                                     doc:name="Add Failure to Response" 
+                                     variableName="responseArray"/>
+                        
+                        <!-- Increment counter -->
+                        <set-variable value="#[vars.counter + 1]" 
+                                     doc:name="Increment Counter" 
+                                     variableName="counter"/>
+                        
+                        <logger level="ERROR" 
+                               doc:name="Log Failure" 
+                               message="#['Failed to insert: ' ++ error.description]"/>
                     </on-error-continue>
                 </error-handler>
             </try>
-        </parallel-foreach>
+        </foreach>
         
-        <!-- Transform parallel foreach result to proper JSON response -->
-        <ee:transform doc:name="Set Final Response">
-            <ee:message>
-                <ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-payload]]></ee:set-payload>
-            </ee:message>
-        </ee:transform>
+        <!-- Set final response -->
+        <set-payload value="#[vars.responseArray]" doc:name="Set Final Response"/>
         
         <logger level="INFO" 
-               doc:name="Log Response" 
-               message="#['Response: ' ++ write(payload, 'application/json')]"/>
-        
-        <error-handler>
-            <on-error-propagate enableNotifications="true" 
-                               logException="true" 
-                               doc:name="On Error Propagate" 
-                               type="ANY">
-                <ee:transform doc:name="Handle Error">
-                    <ee:message>
-                        <ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-    error: "Failed to process requests",
-    details: error.description
-}]]></ee:set-payload>
-                    </ee:message>
-                </ee:transform>
-                <set-property propertyName="http.status" value="500" doc:name="Set HTTP 500"/>
-            </on-error-propagate>
-        </error-handler>
+               doc:name="Log Final Response" 
+               message="#['Final Response: ' ++ write(payload, 'application/json')]"/>
     </flow>
-
-    <!-- Select Flow - Your existing implementation -->
-    <sub-flow name="select-flow" doc:name="select-flow">
-        <db:select doc:name="Get Max Sequence" config-ref="Database_Config">
-            <db:sql><![CDATA[SELECT COALESCE(MAX(CAST(SUBSTRING(API_ID, LENGTH(:lob) + 2) AS UNSIGNED)), 0) + 1 as max_seq 
-FROM PMML_API_REQUEST_DETAILS 
-WHERE LOB = :lob]]></db:sql>
-            <db:input-parameters><![CDATA[#[{
-    lob: vars.lob
-}]]]></db:input-parameters>
-        </db:select>
-        
-        <logger level="INFO" 
-               doc:name="Log Select Result" 
-               message="#['Select query result: ' ++ write(payload, 'application/json')]"/>
-    </sub-flow>
-
-    <!-- Insert Flow - Your existing implementation -->
-    <sub-flow name="insert-flow" doc:name="insert-flow">
-        <db:insert doc:name="Insert API Request" 
-                   config-ref="Database_Config">
-            <db:sql><![CDATA[INSERT INTO PMML_API_REQUEST_DETAILS (API_ID, HTTPS_METHOD, REQUEST_URL, CLIENT_ID, LOB)
-VALUES (:apiId, :httpMethod, :requestUrl, :clientId, :lob)]]></db:sql>
-            <db:input-parameters><![CDATA[#[{
-    apiId: payload.apiId,
-    httpMethod: payload.httpMethod,
-    requestUrl: payload.requestUrl,
-    clientId: payload.clientId,
-    lob: payload.lob
-}]]]></db:input-parameters>
-        </db:insert>
-        
-        <!-- Return the inserted record details -->
-        <ee:transform doc:name="Return Insert Result">
-            <ee:message>
-                <ee:set-payload><![CDATA[%dw 2.0
-output application/java
----
-{
-    apiId: payload.apiId,
-    httpMethod: payload.httpMethod,
-    requestUrl: payload.requestUrl,
-    clientId: payload.clientId,
-    lob: payload.lob,
-    originalPayload: payload.originalPayload
-}]]></ee:set-payload>
-            </ee:message>
-        </ee:transform>
-        
-        <logger level="INFO" 
-               doc:name="Log Insert Result" 
-               message="#['Inserted record with API_ID: ' ++ payload.apiId]"/>
-    </sub-flow>
 
 </mule>
