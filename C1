@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+      http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+      http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+      http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+      http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <!-- HTTP Listener Configuration -->
+    <http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" >
+        <http:listener-connection host="0.0.0.0" port="8081" />
+    </http:listener-config>
+
+    <!-- Database Configuration: adjust URL, user, password according to your DB -->
+    <db:config name="Database_Config" doc:name="Database Config" >
+        <db:generic-connection url="jdbc:mysql://localhost:3306/yourdb" 
+                               driverClassName="com.mysql.cj.jdbc.Driver"
+                               user="yourusername" password="yourpassword"/>
+    </db:config>
+
+    <flow name="resource-onboarding-flow">
+        <!-- HTTP Listener -->
+        <http:listener config-ref="HTTP_Listener_config" path="/resource/onboarding" allowedMethods="POST" doc:name="HTTP Listener" />
+        
+        <!-- Capture lob header -->
+        <set-variable variableName="lob" value="#[attributes.headers.lob]" doc:name="Set LOB Variable" />
+        
+        <!-- Save incoming request array -->
+        <set-variable variableName="requestArray" value="#[payload]" doc:name="Set Request Array" />
+        
+        <!-- Process each item in parallel -->
+        <ee:parallel-foreach collection="#[vars.requestArray]" doc:name="Parallel For Each" >
+            
+            <!-- Query DB to get count for current lob -->
+            <db:select doc:name="DB Count Existing Records" config-ref="Database_Config">
+                <db:sql>SELECT COUNT(*) AS cnt FROM PMML_API_REQUEST_DETAILS WHERE LOB = :lob</db:sql>
+                <db:input-parameters><![CDATA[#[{lob: vars.lob}]]]></db:input-parameters>
+            </db:select>
+            
+            <!-- Calculate sequence number -->
+            <set-variable variableName="seqNumber" value="#[payload[0].cnt + 1]" doc:name="Set Sequence Number" />
+            
+            <!-- Create API_ID -->
+            <set-variable variableName="apiId" value="#[vars.lob ++ '_' ++ vars.seqNumber]" doc:name="Set API_ID" />
+            
+            <!-- Try to insert record with error handling -->
+            <try doc:name="Try Insert DB Record">
+                <db:insert doc:name="Insert API Request" config-ref="Database_Config">
+                    <db:sql>
+                        <![CDATA[
+                        INSERT INTO PMML_API_REQUEST_DETAILS (API_ID, CLIENT_ID, HTTPS_METHOD, REQUEST_URL, LOB)
+                        VALUES (:apiId, :clientId, :method, :url, :lob)
+                        ]]>
+                    </db:sql>
+                    <db:input-parameters><![CDATA[
+                    #[
+                      {
+                        apiId: vars.apiId,
+                        clientId: item.ClientID,
+                        method: item.method,
+                        url: item.URL,
+                        lob: vars.lob
+                      }
+                    ]
+                    ]]></db:input-parameters>
+                </db:insert>
+                
+                <!-- Success status/message -->
+                <set-variable variableName="insertStatus" value="'success'" doc:name="Set Success Status" />
+                <set-variable variableName="insertMessage" value="'record successfully inserted'" doc:name="Set Success Message" />
+                
+                <!-- Error handling -->
+                <on-error-continue doc:name="On Error Continue">
+                    <!-- Set failure status/message with error info -->
+                    <set-variable variableName="insertStatus" value="'failure'" />
+                    <set-variable variableName="insertMessage" value="#['Insert failed: ' ++ error.description]" />
+                </on-error-continue>
+            </try>
+            
+            <!-- Build output object for this item -->
+            <ee:transform doc:name="Build Output Item">
+                <ee:message>
+                  <ee:set-payload><![CDATA[
+                    %dw 2.0
+                    output application/json
+                    ---
+                    {
+                      method: item.method,
+                      URL: item.URL,
+                      ClientID: item.ClientID,
+                      Status: vars.insertStatus,
+                      Message: vars.insertMessage,
+                      API_ID: vars.apiId
+                    }
+                  ]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+            
+        </ee:parallel-foreach>
+        
+        <!-- Return aggregated results -->
+        <set-payload value="#[payload]" doc:name="Set Response Payload" />
+    </flow>
+
+</mule>
