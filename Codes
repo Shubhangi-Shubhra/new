@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+      http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+      http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+      http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+      http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd">
+
+    <!-- ====================================================== -->
+    <!-- HTTP Listener Configuration                            -->
+    <!-- ====================================================== -->
+    <http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config">
+        <http:listener-connection host="0.0.0.0" port="8081" />
+    </http:listener-config>
+
+    <!-- ====================================================== -->
+    <!-- Onboarding API Flow                                    -->
+    <!-- ====================================================== -->
+    <flow name="onboardingFlow" doc:id="onboardingFlow">
+        <http:listener doc:name="Onboarding POST Listener"
+                       config-ref="HTTP_Listener_config"
+                       path="/resource/onboarding"
+                       allowedMethods="POST" />
+
+        <!-- Log request for debugging -->
+        <logger level="INFO" message="Received Request: #[payload]" doc:name="Log Incoming Request" />
+
+        <!-- Store LOB header -->
+        <set-variable variableName="lob" value="#[attributes.headers.lob]" doc:name="Set LOB" />
+
+        <!-- Parallel For Each for concurrent processing -->
+        <parallel-foreach collection="#[payload]" doc:name="Parallel For Each">
+            
+            <!-- Generate API_ID dynamically: LOB_1, LOB_2, etc -->
+            <set-variable variableName="apiId" value="#[vars.lob ++ '_' ++ (counter + 1)]" doc:name="Generate API_ID" />
+
+            <!-- Enrich record with additional info -->
+            <set-payload doc:name="Prepare Record" value="#[
+                {
+                    API_ID: vars.apiId,
+                    CLIENT_ID: payload.ClientID,
+                    HTTPS_METHOD: payload.method,
+                    REQUEST_URL: payload.URL,
+                    LOB: vars.lob
+                }
+            ]" />
+
+            <!-- Call Existing Insert Flow -->
+            <flow-ref name="insert-flow" doc:name="Call Insert Flow" />
+
+        </parallel-foreach>
+
+        <!-- Prepare Final Response -->
+        <transform doc:name="Prepare Response">
+            <dw:transform-message>
+                <dw:set-payload><![CDATA[
+%dw 2.0
+output application/json
+---
+payload map (item, index) -> {
+    method: item.HTTPS_METHOD,
+    URL: item.REQUEST_URL,
+    ClientID: item.CLIENT_ID,
+    Status: item.Status default "success",
+    Message: item.Message default "record successfully inserted",
+    API_ID: item.API_ID
+}
+                ]]></dw:set-payload>
+            </dw:transform-message>
+        </transform>
+
+        <!-- Log Response -->
+        <logger level="INFO" message="Response: #[payload]" doc:name="Log Response" />
+
+    </flow>
+
+</mule>
