@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns:http="http://www.mulesoft.org/schema/mule/http"
+xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+xmlns:db="http://www.mulesoft.org/schema/mule/db"
+xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+
+```
+<!-- Implementation Flow for Resource Onboarding -->
+<flow name="post-resource-onboarding-flow">
+    
+    <!-- Step 1: Set Variables from Headers -->
+    <set-variable variableName="lob" value="#[attributes.headers.lob]" doc:name="Set LOB Variable"/>
+    
+    <!-- Step 2: Validate LOB Header -->
+    <choice doc:name="Validate LOB">
+        <when expression="#[vars.lob == null or vars.lob == '']">
+            <ee:transform doc:name="Error Response - Missing 
+      <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+```
+
+## output application/json
+
+{
+error: “Bad Request”,
+message: “LOB header is required”
+}]]></ee:set-payload>
+</ee:message>
+<ee:variables>
+<ee:set-variable variableName=“httpStatus”><![CDATA[400]]></ee:set-variable>
+</ee:variables>
+</ee:transform>
+</when>
+<otherwise>
+<!-- Step 3: Store Original Payload -->
+<set-variable variableName="originalPayload" value="#[payload]" doc:name="Store Original Payload"/>
+
+```
+            <!-- Step 4: Get Next Sequence Number for LOB -->
+            <db:select config-ref="Database_Config" doc:name="Get Next Sequence Number">
+                <db:sql><![CDATA[SELECT COALESCE(MAX(CAST(SUBSTRING(API_ID, LENGTH(:lob) + 2) AS INTEGER)), 0) AS current_max_seq
+```
+
+FROM PMML_API_REQUEST_DETAILS
+WHERE API_ID LIKE CONCAT(:lob, ‘_%’)]]></db:sql>
+<db:input-parameters><![CDATA[#[{
+‘lob’: vars.lob
+}]]]></db:input-parameters>
+</db:select>
+
+```
+            <!-- Step 5: Store Sequence Number -->
+            <set-variable variableName="startSequence" value="#[payload[0].current_max_seq + 1]" doc:name="Set Start Sequence"/>
+            
+            <!-- Step 6: Transform and Enrich Payload with API_ID -->
+            <ee:transform doc:name="Add API_ID to Each Record">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+```
+
+## output application/json
+var startSeq = vars.startSequence as Number
+
+vars.originalPayload map ((item, index) -> {
+method: item.method,
+URL: item.URL,
+ClientID: item.ClientID,
+API_ID: vars.lob ++ “_” ++ (startSeq + index),
+LOB: vars.lob
+})]]></ee:set-payload>
+</ee:message>
+</ee:transform>
+
+```
+            <!-- Step 7: Store Enriched Payload -->
+            <set-variable variableName="enrichedPayload" value="#[payload]" doc:name="Store Enriched Payload"/>
+            
+            <!-- Step 8: Parallel ForEach to MERGE Records -->
+            <parallel-foreach doc:name="Parallel MERGE Records" collection="#[vars.enrichedPayload]" maxConcurrency="10">
+                <try doc:name="Try MERGE">
+                    <!-- Use MERGE INTO for Upsert Operation -->
+                    <db:execute-ddl config-ref="Database_Config" doc:name="MERGE INTO">
+                        <db:sql><![CDATA[MERGE INTO PMML_API_REQUEST_DETAILS target
+```
+
+USING (
+SELECT
+:apiId AS API_ID,
+:clientId AS CLIENT_ID,
+:method AS HTTPS_METHOD,
+:url AS REQUEST_URL,
+:lob AS LOB
+FROM DUAL
+) source
+ON (target.API_ID = source.API_ID)
+WHEN MATCHED THEN
+UPDATE SET
+target.CLIENT_ID = source.CLIENT_ID,
+target.HTTPS_METHOD = source.HTTPS_METHOD,
+target.REQUEST_URL = source.REQUEST_URL,
+target.LOB = source.LOB,
+target.UPDATED_DATE = CURRENT_TIMESTAMP
+WHEN NOT MATCHED THEN
+INSERT (API_ID, CLIENT_ID, HTTPS_METHOD, REQUEST_URL, LOB, CREATED_DATE)
+VALUES (source.API_ID, source.CLIENT_ID, source.HTTPS_METHOD, source.REQUEST_URL, source.LOB, CURRENT_TIMESTAMP)]]></db:sql>
+<db:input-parameters><![CDATA[#[{
+‘apiId’: payload.API_ID,
+‘clientId’: payload.ClientID,
+‘method’: payload.method,
+‘url’: payload.URL,
+‘lob’: payload.LOB
+}]]]></db:input-parameters>
+</db:execute-ddl>
+
+```
+                    <!-- Success Response -->
+                    <ee:transform doc:name="Success Response">
+                        <ee:message>
+                            <ee:set-payload><![CDATA[%dw 2.0
+```
+
+## output application/json
+
+{
+method: payload.method,
+URL: payload.URL,
+ClientID: payload.ClientID,
+Status: “success”,
+Message: “record successfully inserted/updated”,
+API_ID: payload.API_ID
+}]]></ee:set-payload>
+</ee:message>
+</ee:transform>
+
+```
+                    <error-handler>
+                        <on-error-continue type="ANY">
+                            <!-- Failure Response -->
+                            <ee:transform doc:name="Failure Response">
+                                <ee:message>
+                                    <ee:set-payload><![CDATA[%dw 2.0
+```
+
+## output application/json
+
+{
+method: payload.method,
+URL: payload.URL,
+ClientID: payload.ClientID,
+Status: “failure”,
+Message: “record failed to be inserted/updated: “ ++ error.description,
+API_ID: payload.API_ID
+}]]></ee:set-payload>
+</ee:message>
+</ee:transform>
+</on-error-continue>
+</error-handler>
+</try>
+</parallel-foreach>
+
+```
+            <!-- Step 9: Aggregate Results -->
+            <ee:transform doc:name="Aggregate Results">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+```
+
+## output application/json
+
+payload]]></ee:set-payload>
+</ee:message>
+</ee:transform>
+</otherwise>
+</choice>
+
+```
+    <!-- Step 10: Set HTTP Status -->
+    <choice doc:name="Set HTTP Status">
+        <when expression="#[vars.httpStatus != null]">
+            <set-payload value="#[payload]" doc:name="Set Error Payload"/>
+        </when>
+        <otherwise>
+            <set-payload value="#[payload]" doc:name="Set Success Payload"/>
+        </otherwise>
+    </choice>
+    
+</flow>
+```
+
+</mule>
