@@ -1,0 +1,74 @@
+MERGE INTO PKML_API_REQUEST_DETAILS target 
+USING (
+    SELECT 
+        :lob AS LOB,
+        :method AS HTTPS_METHOD,
+        :url AS REQUEST_URL,
+        :lob || '_' || PKML_API_SEQ.NEXTVAL AS API_ID
+    FROM DUAL
+) source 
+ON (target.API_ID = source.API_ID AND 1=0)  -- Always insert
+WHEN NOT MATCHED THEN 
+    INSERT (API_ID, LOB, HTTPS_METHOD, REQUEST_URL) 
+    VALUES (source.API_ID, source.LOB, source.HTTPS_METHOD, source.REQUEST_URL)
+
+
+
+
+<!-- Step 6: Transform and Enrich Payload with API_ID -->
+<ee:transform doc:name="Add API_ID to Each Record">
+    <ee:message>
+        <ee:set-payload><![CDATA[%dw 2.0
+output application/java
+var startSeq = (payload[0].CURRENT_MAX_SEQ default 0) + 1
+---
+(vars.inputData.originalPayload default []) map ((item, index) -> {
+    method: item.method,
+    url: item.URL,
+    apiId: (vars.inputData.lob default "") ++ "_" ++ (startSeq + index) as String,
+    lob: vars.inputData.lob default ""
+})]]></ee:set-payload>
+    </ee:message>
+</ee:transform>
+
+<!-- Step 8: Parallel ForEach to MERGE Records -->
+<parallel-foreach doc:name="Parallel MERGE Records" maxConcurrency="10" collection="#[payload]">
+    <ee:transform doc:name="insert query">
+        <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+    lob: payload.lob,
+    method: payload.method,
+    url: payload.url,
+    apiId: payload.apiId
+}]]></ee:set-payload>
+        </ee:message>
+    </ee:transform>
+    
+    <db:insert config-ref="Database_Config" doc:name="Insert">
+        <db:sql><![CDATA[
+            MERGE INTO PKML_API_REQUEST_DETAILS target 
+            USING (
+                SELECT 
+                    :apiId AS API_ID,
+                    :lob AS LOB,
+                    :method AS HTTPS_METHOD,
+                    :url AS REQUEST_URL
+                FROM DUAL
+            ) source 
+            ON (1=0)
+            WHEN NOT MATCHED THEN 
+                INSERT (API_ID, LOB, HTTPS_METHOD, REQUEST_URL) 
+                VALUES (source.API_ID, source.LOB, source.HTTPS_METHOD, source.REQUEST_URL)
+        ]]></db:sql>
+        <db:input-parameters><![CDATA[#[{
+            'apiId': payload.apiId,
+            'lob': payload.lob,
+            'method': payload.method,
+            'url': payload.url
+        }]]]></db:input-parameters>
+    </db:insert>
+</parallel-foreach>
+
