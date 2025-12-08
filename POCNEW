@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:file="http://www.mulesoft.org/schema/mule/file"
+      xmlns:batch="http://www.mulesoft.org/schema/mule/batch"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+        http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <file:config name="Input_File_Config" doc:name="Input File Config">
+        <file:connection workingDir="C:\input"/>
+    </file:config>
+
+    <file:config name="Output_File_Config" doc:name="Output File Config">
+        <file:connection workingDir="C:\output"/>
+    </file:config>
+
+    <http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener Config">
+        <http:listener-connection host="0.0.0.0" port="8081"/>
+    </http:listener-config>
+
+    <flow name="bulk-recordsFlow" doc:id="8ac30fbf-6a80-4e25-9cd3-7ff7db8e0ab8">
+        <http:listener config-ref="HTTP_Listener_config"
+                       path="/export-batch"
+                       doc:name="Listener"/>
+
+        <logger message="Starting CSV export" level="INFO" doc:name="Log Start"/>
+
+        <!-- Read CSV file -->
+        <file:read config-ref="Input_File_Config"
+                   path="pmml_pmml_api_requests_over_5mb.csv"
+                   doc:name="Read CSV File"/>
+
+<ee:transform doc:name="Parse CSV">
+    <ee:message>
+        <ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+payload
+]]></ee:set-payload>
+    </ee:message>
+</ee:transform>
+
+
+        <logger message="Read #[sizeOf(payload)] records from CSV" level="INFO" doc:name="Log Count"/>
+
+        <batch:job jobName="Export_PMML_Batch" maxFailedRecords="-1">
+            <batch:process-records>
+
+                <batch:step name="Normalize_Record">
+                    <ee:transform doc:name="Normalize Data">
+                        <ee:message>
+                            <ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+    apiId:      (payload.API_ID default "") as String,
+    clientId:   (payload.CLIENT_ID default "") as String,
+    httpMethod: (payload.HTTPS_METHOD default "") as String,
+    requestUrl: (payload.REQUEST_URL default "") as String,
+    lob:        (payload.LOB default "") as String
+}
+]]></ee:set-payload>
+                        </ee:message>
+                    </ee:transform>
+                </batch:step>
+
+                <batch:step name="Aggregate_And_Write_XML">
+                    <batch:aggregator size="10000">
+
+                        <ee:transform doc:name="Split By Size">
+                            <ee:message>
+                                <ee:set-payload><![CDATA[%dw 2.0
+output application/java
+
+var maxBytes = 5242880
+
+fun toXmlChunk(recs) =
+    write(
+        {
+            PMMLRequests: {
+                Request: recs map {
+                    API_ID: $.apiId,
+                    CLIENT_ID: $.clientId,
+                    HTTPS_METHOD: $.httpMethod,
+                    REQUEST_URL: $.requestUrl,
+                    LOB: $.lob
+                }
+            }
+        },
+        "application/xml"
+    )
+
+fun splitBySize(remainingRecs, currentChunk = [], allChunks = []) =
+    if (isEmpty(remainingRecs))
+        if (!isEmpty(currentChunk)) (allChunks ++ [currentChunk]) else allChunks
+    else (
+        do {
+            var nextRecord = remainingRecs[0]
+            var testChunk = currentChunk ++ [nextRecord]
+            var testSize = sizeOf(toXmlChunk(testChunk))
+            ---
+            if (testSize >= maxBytes)
+                if (isEmpty(currentChunk))
+                    splitBySize(remainingRecs[1 to -1], [], allChunks ++ [[nextRecord]])
+                else
+                    splitBySize(remainingRecs, [], allChunks ++ [currentChunk])
+            else
+                splitBySize(remainingRecs[1 to -1], testChunk, allChunks)
+        }
+    )
+---
+splitBySize(payload)
+]]></ee:set-payload>
+                            </ee:message>
+                        </ee:transform>
+
+                        <foreach collection="#[payload]" doc:name="For Each Chunk">
+
+                            <ee:transform doc:name="Create XML">
+                                <ee:message>
+                                    <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+---
+PMMLRequests: {
+    Request: payload map {
+        API_ID: $.apiId,
+        CLIENT_ID: $.clientId,
+        HTTPS_METHOD: $.httpMethod,
+        REQUEST_URL: $.requestUrl,
+        LOB: $.lob
+    }
+}
+]]></ee:set-payload>
+                                </ee:message>
+                            </ee:transform>
+
+                            <set-variable variableName="fileName"
+                                          value="#['pmml_' ++ (now() as String {format: 'yyyyMMdd_HHmmss_SSS'}) ++ '.xml']"
+                                          doc:name="Set Filename"/>
+
+                            <file:write config-ref="Output_File_Config"
+                                        path="#[vars.fileName]"
+                                        doc:name="Write XML File"/>
+
+                            <logger level="INFO"
+                                    message="Wrote file #[vars.fileName] with #[sizeOf(payload)] bytes"
+                                    doc:name="Log File Written"/>
+                        </foreach>
+
+                    </batch:aggregator>
+                </batch:step>
+
+            </batch:process-records>
+
+            <batch:on-complete>
+                <logger level="INFO"
+                        message="Batch complete. Success: #[payload.successfulRecords], Failed: #[payload.failedRecords]"
+                        doc:name="Log Complete"/>
+            </batch:on-complete>
+        </batch:job>
+
+        <set-payload value="#[{status: 'SUCCESS', message: 'Batch export triggered. Check C:\output for XML files'}]"
+                     doc:name="Set Response"/>
+
+        <ee:transform doc:name="JSON Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload
+]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <error-handler>
+            <on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate">
+                <logger level="ERROR" doc:name="Log Error" message="Error: #[error.description]"/>
+                <set-payload value="#[{status: 'ERROR', message: error.description}]" doc:name="Error Response"/>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+
+</mule>
