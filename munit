@@ -1,0 +1,245 @@
+<munit:test name="onboarding-resourcesFlow-success-test" 
+                doc:id="a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                description="Test successful insertion of multiple API records">
+        
+        <munit:behavior>
+            <!-- Set input payload and attributes -->
+            <munit:set-event doc:name="Set Input Event">
+                <munit:payload value='#[[{"method": "GET", "URL": "/api/users"}, {"method": "POST", "URL": "/api/orders"}]]' 
+                               mediaType="application/json"/>
+                <munit:attributes value='#[{"headers": {"lob": "RETAIL"}}]'/>
+            </munit:set-event>
+
+            <!-- Mock update-flow (MERGE operation) -->
+            <munit-tools:mock-when doc:name="Mock Update Flow" processor="flow-ref">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="name" whereValue="update-flow"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value='#[{"affectedRows": 1}]'/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+
+            <!-- Mock select-flow (Fetch API_ID) -->
+            <munit-tools:mock-when doc:name="Mock Select Flow" processor="flow-ref">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="name" whereValue="select-flow"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value='#[[{"API_ID": "API-12345"}]]' mediaType="application/json"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+
+        <munit:execution>
+            <flow-ref doc:name="Execute Flow" name="onboarding-resourcesFlow"/>
+        </munit:execution>
+
+        <munit:validation>
+            <!-- Assert payload size matches input records -->
+            <munit-tools:assert-that doc:name="Assert Result Count" 
+                                     expression="#[sizeOf(payload)]" 
+                                     is="#[MunitTools::equalTo(2)]"/>
+            
+            <!-- Assert first record success -->
+            <munit-tools:assert-that doc:name="Assert First Record Status" 
+                                     expression="#[payload[0].Status]" 
+                                     is="#[MunitTools::equalTo('success')]"/>
+            
+            <!-- Assert API_ID is returned -->
+            <munit-tools:assert-that doc:name="Assert API_ID Present" 
+                                     expression="#[payload[0].API_ID]" 
+                                     is="#[MunitTools::equalTo('API-12345')]"/>
+            
+            <!-- Assert second record success -->
+            <munit-tools:assert-that doc:name="Assert Second Record Status" 
+                                     expression="#[payload[1].Status]" 
+                                     is="#[MunitTools::equalTo('success')]"/>
+
+            <!-- Verify update-flow was called twice -->
+            <munit-tools:verify-call doc:name="Verify Update Flow Called" processor="flow-ref" times="2">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="name" whereValue="update-flow"/>
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+
+            <!-- Verify select-flow was called twice -->
+            <munit-tools:verify-call doc:name="Verify Select Flow Called" processor="flow-ref" times="2">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="name" whereValue="select-flow"/>
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+    <!-- ============================================================ -->
+    <!-- TEST 2: Failure Scenario - Database Error During Insert -->
+    <!-- ============================================================ -->
+    <munit:test name="onboarding-resourcesFlow-failure-test" 
+                doc:id="b2c3d4e5-f6a7-8901-bcde-f23456789012"
+                description="Test error handling when database insert fails">
+        
+        <munit:behavior>
+            <munit:set-event doc:name="Set Input Event">
+                <munit:payload value='#[[{"method": "DELETE", "URL": "/api/invalid"}]]' 
+                               mediaType="application/json"/>
+                <munit:attributes value='#[{"headers": {"lob": "FINANCE"}}]'/>
+            </munit:set-event>
+
+            <!-- Mock update-flow to throw an error -->
+            <munit-tools:mock-when doc:name="Mock Update Flow Error" processor="flow-ref">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="name" whereValue="update-flow"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="DB:CONNECTIVITY" description="Database connection failed"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+
+        <munit:execution>
+            <flow-ref doc:name="Execute Flow" name="onboarding-resourcesFlow"/>
+        </munit:execution>
+
+        <munit:validation>
+            <!-- Assert failure status -->
+            <munit-tools:assert-that doc:name="Assert Failure Status" 
+                                     expression="#[payload[0].Status]" 
+                                     is="#[MunitTools::equalTo('Failure')]"/>
+            
+            <!-- Assert error message contains description -->
+            <munit-tools:assert-that doc:name="Assert Error Message" 
+                                     expression="#[payload[0].Message]" 
+                                     is="#[MunitTools::containsString('failed to be inserted')]"/>
+            
+            <!-- Assert API_ID is N/A for failed records -->
+            <munit-tools:assert-that doc:name="Assert API_ID N/A" 
+                                     expression="#[payload[0].API_ID]" 
+                                     is="#[MunitTools::equalTo('N/A')]"/>
+        </munit:validation>
+    </munit:test>
+
+    <!-- ============================================================ -->
+    <!-- TEST 3: Empty Payload Scenario -->
+    <!-- ============================================================ -->
+    <munit:test name="onboarding-resourcesFlow-empty-payload-test" 
+                doc:id="c3d4e5f6-a7b8-9012-cdef-345678901234"
+                description="Test handling of empty input payload">
+        
+        <munit:behavior>
+            <munit:set-event doc:name="Set Empty Payload">
+                <munit:payload value='#[[]]' mediaType="application/json"/>
+                <munit:attributes value='#[{"headers": {"lob": "RETAIL"}}]'/>
+            </munit:set-event>
+        </munit:behavior>
+
+        <munit:execution>
+            <flow-ref doc:name="Execute Flow" name="onboarding-resourcesFlow"/>
+        </munit:execution>
+
+        <munit:validation>
+            <!-- Assert empty result -->
+            <munit-tools:assert-that doc:name="Assert Empty Result" 
+                                     expression="#[sizeOf(payload)]" 
+                                     is="#[MunitTools::equalTo(0)]"/>
+        </munit:validation>
+    </munit:test>
+
+    <!-- ============================================================ -->
+    <!-- TEST 4: Partial Success Scenario - Mixed Results -->
+    <!-- ============================================================ -->
+    <munit:test name="onboarding-resourcesFlow-partial-success-test" 
+                doc:id="d4e5f6a7-b8c9-0123-defa-456789012345"
+                description="Test mixed success and failure results">
+        
+        <munit:behavior>
+            <munit:set-event doc:name="Set Input Event">
+                <munit:payload value='#[[{"method": "GET", "URL": "/api/success"}, {"method": "POST", "URL": "/api/fail"}]]' 
+                               mediaType="application/json"/>
+                <munit:attributes value='#[{"headers": {"lob": "OPERATIONS"}}]'/>
+            </munit:set-event>
+
+            <!-- Mock update-flow - success for first call -->
+            <munit-tools:mock-when doc:name="Mock Update Flow Success" processor="flow-ref">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="name" whereValue="update-flow"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value='#[{"affectedRows": 1}]'/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+
+            <!-- Mock select-flow -->
+            <munit-tools:mock-when doc:name="Mock Select Flow" processor="flow-ref">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="name" whereValue="select-flow"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value='#[[{"API_ID": "API-99999"}]]' mediaType="application/json"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+
+        <munit:execution>
+            <flow-ref doc:name="Execute Flow" name="onboarding-resourcesFlow"/>
+        </munit:execution>
+
+        <munit:validation>
+            <!-- Assert we have 2 results -->
+            <munit-tools:assert-that doc:name="Assert Result Count" 
+                                     expression="#[sizeOf(payload)]" 
+                                     is="#[MunitTools::equalTo(2)]"/>
+            
+            <!-- Assert at least one success -->
+            <munit-tools:assert-that doc:name="Assert Contains Success" 
+                                     expression="#[payload filter ($.Status == 'success')]" 
+                                     is="#[MunitTools::not(MunitTools::empty())]"/>
+        </munit:validation>
+    </munit:test>
+
+    <!-- ============================================================ -->
+    <!-- TEST 5: Null LOB Header Scenario -->
+    <!-- ============================================================ -->
+    <munit:test name="onboarding-resourcesFlow-null-lob-test" 
+                doc:id="e5f6a7b8-c9d0-1234-efab-567890123456"
+                description="Test handling when LOB header is null">
+        
+        <munit:behavior>
+            <munit:set-event doc:name="Set Input Without LOB">
+                <munit:payload value='#[[{"method": "GET", "URL": "/api/test"}]]' 
+                               mediaType="application/json"/>
+                <munit:attributes value='#[{"headers": {}}]'/>
+            </munit:set-event>
+
+            <!-- Mock update-flow -->
+            <munit-tools:mock-when doc:name="Mock Update Flow" processor="flow-ref">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="name" whereValue="update-flow"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value='#[{"affectedRows": 1}]'/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+
+            <!-- Mock select-flow -->
+            <munit-tools:mock-when doc:name="Mock Select Flow" processor="flow-ref">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="name" whereValue="select-flow"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value='#[[{"API_ID": "API-NULL-LOB"}]]' mediaType="application/json"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+
+        <munit:execution>
+            <flow-ref doc:name="Execute Flow" name="onboarding-resourcesFlow"/>
+        </munit:execution>
+
+        <munit:validation>
+            <!-- Assert flow completes without error -->
+            <munit-tools:assert-that doc:name="Assert Result Exists" 
+                                     expression="#[sizeOf(payload)]" 
+                                     is="#[MunitTools::equalTo(1)]"/>
+        </munit:validation>
+    </munit:test>
