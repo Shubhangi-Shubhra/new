@@ -1,88 +1,78 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<munit:test name="onboarding-resourcesFlow-success-test" description="Happy path for onboarding-resourcesFlow">
 
-<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
-      xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
-      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
-      xmlns="http://www.mulesoft.org/schema/mule/core"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xsi:schemaLocation="
-        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
-        http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
-        http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
 
-    <munit:config name="munit-config"/>
+<!-- Mock update-flow (DB insert/merge) -->
+<munit:behavior>
+<munit-tools:mock-when processor="flow-ref">
+<munit-tools:with-attributes>
+<munit-tools:with-attribute attributeName="name" whereValue="update-flow"/>
+</munit-tools:with-attributes>
+<munit-tools:then-return>
+<munit-tools:payload value="#[{}]" mediaType="application/java"/>
+</munit-tools:then-return>
+</munit-tools:mock-when>
 
-    <munit:test name="onboarding-resourcesFlow-test" description="Happy path test">
-        <!-- 1. Behavior: mock called flows -->
-        <munit:behavior>
-            <!-- Mock update-flow -->
-            <munit-tools:mock-when processor="mule:flow-ref">
-                <munit-tools:with-attributes>
-                    <munit-tools:with-attribute attributeName="name" whereValue="update-flow"/>
-                </munit-tools:with-attributes>
-                <munit-tools:then-return>
-                    <!-- update-flow does not change payload for this test -->
-                </munit-tools:then-return>
-            </munit-tools:mock-when>
 
-            <!-- Mock select-flow to return API_ID -->
-            <munit-tools:mock-when processor="mule:flow-ref">
-                <munit-tools:with-attributes>
-                    <munit-tools:with-attribute attributeName="name" whereValue="select-flow"/>
-                </munit-tools:with-attributes>
-                <munit-tools:then-return>
-                    <!-- Return one row with API_ID depending on URL/method -->
-                    <munit-tools:payload
-                        value="#[
-                            output application/json
-                            ---
-                            if (vars.data.url == 'https://example.com/p12')      { API_ID: 'ORG_21' }
-                            else if (vars.data.url == 'https://example.com/p1562') { API_ID: 'ORG_25' }
-                            else if (vars.data.url == 'https://example.com/p21' and vars.data.method == 'DELETE') { API_ID: 'ORG_22' }
-                            else if (vars.data.url == 'https://example.com/unique') { API_ID: 'ORG_24' }
-                            else if (vars.data.url == 'https://example.com/uni124689') { API_ID: 'ORG_29' }
-                            else if (vars.data.url == 'https://example.com/unique@1' and vars.data.method == 'DELETE') { API_ID: 'ORG_30' }
-                            else if (vars.data.url == 'https://local.com/unique@1') { API_ID: 'ORG_31' }
-                            else { API_ID: 'UNKNOWN' }
-                            ]"/>
-                </munit-tools:then-return>
-            </munit-tools:mock-when>
-        </munit:behavior>
+<!-- Mock select-flow to return API_ID sequentially -->
+<munit-tools:mock-when processor="flow-ref">
+<munit-tools:with-attributes>
+<munit-tools:with-attribute attributeName="name" whereValue="select-flow"/>
+</munit-tools:with-attributes>
+<munit-tools:then-return>
+<munit-tools:payload><![CDATA[
+#[
+{ API_ID: 'ORG_21' },
+{ API_ID: 'ORG_25' },
+{ API_ID: 'ORG_22' },
+{ API_ID: 'ORG_24' },
+{ API_ID: 'ORG_29' },
+{ API_ID: 'ORG_30' },
+{ API_ID: 'ORG_31' }
+]
+]]></munit-tools:payload>
+</munit-tools:then-return>
+</munit-tools:mock-when>
+</munit:behavior>
 
-        <!-- 2. Execution: set event using input file and call flow -->
-        <munit:execution>
-            <munit:set-event>
-                <!-- headers -->
-                <munit:attributes value="#[
-                    output application/java
-                    ---
-                    {
-                      headers: { lob: 'ORG' }
-                    }
-                ]"/>
 
-                <!-- payload from file -->
-                <munit:payload mediaType="application/json"
-                    value="#[
-                        output application/json
-                        ---
-                        readUrl('classpath://sample_data/onboarding-input.json','application/json')
-                    ]"/>
-            </munit:set-event>
+<munit:execution>
+<munit:set-event>
+<munit:payload><![CDATA[
+[
+{ "method": "PATCH", "URL": "https://example.com/p12" },
+{ "method": "PATCH", "URL": "https://example.com/p1562" },
+{ "method": "DELETE", "URL": "https://example.com/p21" },
+{ "method": "PATCH", "URL": "https://example.com/unique" },
+{ "method": "PATCH", "URL": "https://example.com/uni124689" },
+{ "method": "DELETE", "URL": "https://example.com/unique1" },
+{ "method": "POST", "URL": "https://local.com/unique1" }
+]
+]]></munit:payload>
+<munit:attributes><![CDATA[
+{
+headers: {
+lob: 'ORG'
+}
+}
+]]></munit:attributes>
+</munit:set-event>
 
-            <flow-ref name="onboarding-resourcesFlow"/>
-        </munit:execution>
 
-        <!-- 3. Validation: compare whole payload with expected file -->
-        <munit:validation>
-            <munit-tools:assert-that
-                expression="#[payload]"
-                is="#[
-                    MunitTools::equalTo(
-                        readUrl('classpath://sample_data/onboarding-expected.json','application/json')
-                    )
-                ]"/>
-        </munit:validation>
-    </munit:test>
-</mule>
+<flow-ref name="onboarding-resourcesFlow"/>
+</munit:execution>
+
+
+<munit:validation>
+<munit-tools:assert-that expression="#[payload]" is="#[MunitTools::equalTo([
+{ method: 'PATCH', URL: 'https://example.com/p12', Status: 'success', Message: 'Record successfully inserted', API_ID: 'ORG_21' },
+{ method: 'PATCH', URL: 'https://example.com/p1562', Status: 'success', Message: 'Record successfully inserted', API_ID: 'ORG_25' },
+{ method: 'DELETE', URL: 'https://example.com/p21', Status: 'success', Message: 'Record successfully inserted', API_ID: 'ORG_22' },
+{ method: 'PATCH', URL: 'https://example.com/unique', Status: 'success', Message: 'Record successfully inserted', API_ID: 'ORG_24' },
+{ method: 'PATCH', URL: 'https://example.com/uni124689', Status: 'success', Message: 'Record successfully inserted', API_ID: 'ORG_29' },
+{ method: 'DELETE', URL: 'https://example.com/unique1', Status: 'success', Message: 'Record successfully inserted', API_ID: 'ORG_30' },
+{ method: 'POST', URL: 'https://local.com/unique1', Status: 'success', Message: 'Record successfully inserted', API_ID: 'ORG_31' }
+])]"/>
+</munit:validation>
+
+
+</munit:test>
