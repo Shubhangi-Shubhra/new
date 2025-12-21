@@ -1,0 +1,113 @@
+#%RAML 1.0 DataType
+type: object
+properties:
+  startTime:
+    description: Request start timestamp
+    type: datetime
+    required: true
+  entityId?:
+    description: Optional entity identifier
+    type: string
+  endTime?:
+    description: Optional end timestamp
+    type: datetime
+  httpStatusCode?:
+    description: HTTP status code of downstream call
+    type: integer
+  errorCode?:
+    description: Application error code if any
+    type: string
+#%RAML 1.0 DataType
+type: object
+properties:
+  transactionId:
+    type: string
+  clientId:
+    type: string
+  apiId:
+    type: string
+  entityId?:
+    type: string
+  startTime?:
+    type: datetime
+  endTime?:
+    type: datetime
+  httpStatusCode?:
+    type: integer
+  errorCode?:
+    type: string
+types:
+  ...
+  postReqApiRequestTracking: !include types/apirequesttracking/postReqApiRequestTracking.raml
+  getResApiRequestTracking:  !include types/apirequesttracking/getResApiRequestTracking.raml
+/apirequesttracking:
+  get:
+    is: [lib.httpError, lib.dbError, lib.commonError, lib.ssoHeader]
+    description: Get API request tracking records
+    queryParameters:
+      transactionId:
+        description: Filter by transaction id
+        type: string
+        required: false
+        example: TRANS-1
+      clientId:
+        description: Filter by client id
+        type: string
+        required: false
+        example: AIT-70858-PACKDASH
+      apiId:
+        description: Filter by API id
+        type: string
+        required: false
+        example: GEP_1
+      entityId:
+        description: Filter by entity id
+        type: string
+        required: false
+        example: TEST-1
+      httpStatusCode:
+        description: Filter by HTTP status code
+        type: integer
+        required: false
+        example: 400
+    responses:
+      200:
+        body:
+          application/json:
+            type: getResApiRequestTracking[]
+  post:
+    is: [lib.apiHeader, lib.httpError, lib.dbError, lib.commonError, lib.ssoHeader]
+    description: Create or update PKML_API_REQUEST_TRACKING record
+    headers:
+      moduleName:
+        description: Module name
+        type: string
+        required: true
+        example: pm-sys-sftputil
+      transactionId:
+        description: Unique transaction id
+        type: string
+        required: true
+        example: TRANS-1
+      apId:
+        description: API id (must exist in PKML_API_REQUEST_DETAILS)
+        type: string
+        required: true
+        example: GEP_1
+      clientId:
+        description: Client id
+        type: string
+        required: true
+        example: AIT-70858-PACKDASH
+    body:
+      application/json:
+        type: postReqApiRequestTracking
+    responses:
+      201:
+        description: Record created.
+      200:
+        description: Record updated.
+      400:
+        description: Missing required header or startTime.
+      500:
+        description: Internal server error.
