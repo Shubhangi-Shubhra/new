@@ -1,0 +1,118 @@
+#%RAML 1.0 DataType
+type: object
+properties:
+  startTime:
+    description: Request start timestamp
+    type: datetime
+    required: true
+  entityId?:
+    type: string
+  endTime?:
+    type: datetime
+  httpStatusCode?:
+    type: integer
+  errorCode?:
+    type: string
+types:
+  ...
+  postReqApiRequestTracking: !include types/apirequesttracking/postReqApiRequestTracking.raml
+/apirequesttracking:
+  post:
+    is: [lib.apiHeader, lib.httpError, lib.dbError, lib.commonError, lib.ssoHeader]
+    description: Create or update PKML_API_REQUEST_TRACKING
+    headers:
+      moduleName:
+        type: string
+        required: true
+      transactionId:
+        type: string
+        required: true
+      apId:
+        type: string
+        required: true
+      clientId:
+        type: string
+        required: true
+    body:
+      application/json:
+        type: postReqApiRequestTracking
+    responses:
+      201:
+        description: Record created
+      200:
+        description: Record updated
+      400:
+        description: Validation error
+      500:
+        description: Internal server error
+%dw 2.0
+output application/java
+var resourceValidation = attributes.maskedRequestPath
+---
+if (resourceValidation == "/apirequesttracking")
+{
+    sql: p('secure::query.upsert.apirequesttracking'),
+    updateRequest:
+    {
+        transactionId: vars.globalVariables.transactionId,
+        clientId:     attributes.headers.clientId,
+        apiId:        attributes.headers.apId,
+        startTime:    payload.startTime,
+        entityId:       if (payload.entityId       default null != null) payload.entityId       else null,
+        endTime:        if (payload.endTime        default null != null) payload.endTime        else null,
+        httpsStatusCode:if (payload.httpStatusCode default null != null) payload.httpStatusCode else null,
+        errorCode:      if (payload.errorCode      default null != null) payload.errorCode      else null
+    }
+}
+else if (resourceValidation == "/requesttrack")
+{
+    // existing old-table logic …
+}
+else if (resourceValidation == "/datametrics")
+{
+    // existing branch …
+}
+else if (resourceValidation == "/watermark")
+{
+    // existing branch …
+}
+else
+    "Invalid Requester Path."
+upsert:
+  apirequesttracking: >
+    MERGE INTO PKML_API_REQUEST_TRACKING tgt
+    USING (
+      SELECT
+        :transactionId    AS TRANSACTION_ID,
+        :clientId         AS CLIENT_ID,
+        :apiId            AS API_ID,
+        :entityId         AS ENTITY_ID,
+        :startTime        AS START_TIME,
+        :endTime          AS END_TIME,
+        :httpsStatusCode  AS HTTPS_STATUS_CODE,
+        :errorCode        AS ERROR_CODE
+      FROM dual
+    ) src
+    ON (tgt.TRANSACTION_ID = src.TRANSACTION_ID)
+    WHEN NOT MATCHED THEN
+      INSERT (
+        TRANSACTION_ID, CLIENT_ID, API_ID, ENTITY_ID,
+        START_TIME, END_TIME, HTTPS_STATUS_CODE, ERROR_CODE
+      )
+      VALUES (
+        src.TRANSACTION_ID, src.CLIENT_ID, src.API_ID, src.ENTITY_ID,
+        src.START_TIME, src.END_TIME, src.HTTPS_STATUS_CODE, src.ERROR_CODE
+      )
+    WHEN MATCHED THEN
+      UPDATE SET
+        tgt.ENTITY_ID         = COALESCE(src.ENTITY_ID,        tgt.ENTITY_ID),
+        tgt.END_TIME          = COALESCE(src.END_TIME,         tgt.END_TIME),
+        tgt.HTTPS_STATUS_CODE = COALESCE(src.HTTPS_STATUS_CODE,tgt.HTTPS_STATUS_CODE),
+        tgt.ERROR_CODE        = COALESCE(src.ERROR_CODE,       tgt.ERROR_CODE);
+{
+  "startTime": "2025-12-20T02:57:09Z",
+  "entityId": "TEST-1",
+  "endTime": "2025-12-20T02:57:39Z",
+  "httpStatusCode": 400,
+  "errorCode": "ERROR-1"
+}
