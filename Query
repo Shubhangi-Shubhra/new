@@ -1,0 +1,32 @@
+upsert:
+  apirequesttracking: >
+    MERGE INTO PKML_API_REQUEST_TRACKING tgt
+    USING (
+      SELECT
+        :transactionId   AS TRANSACTIONID,
+        :moduleName      AS MODULENAME,
+        :clientId        AS CLIENTID,
+        :apId            AS APID,
+        :startTime       AS STARTTIME,
+        :entityId        AS ENTITYID,
+        :endTime         AS ENDTIME,
+        :httpStatusCode  AS HTTPSTATUSCODE,
+        :errorCode       AS ERRORCODE
+      FROM dual
+    ) src
+    ON (tgt.TRANSACTIONID = src.TRANSACTIONID)
+    WHEN NOT MATCHED THEN
+      INSERT (
+        TRANSACTIONID, MODULENAME, CLIENTID, APID, STARTTIME,
+        ENTITYID, ENDTIME, HTTPSTATUSCODE, ERRORCODE
+      )
+      VALUES (
+        src.TRANSACTIONID, src.MODULENAME, src.CLIENTID, src.APID, src.STARTTIME,
+        src.ENTITYID, src.ENDTIME, src.HTTPSTATUSCODE, src.ERRORCODE
+      )
+    WHEN MATCHED THEN
+      UPDATE SET
+        tgt.ENTITYID       = COALESCE(src.ENTITYID,       tgt.ENTITYID),
+        tgt.ENDTIME        = COALESCE(src.ENDTIME,        tgt.ENDTIME),
+        tgt.HTTPSTATUSCODE = COALESCE(src.HTTPSTATUSCODE, tgt.HTTPSTATUSCODE),
+        tgt.ERRORCODE      = COALESCE(src.ERRORCODE,      tgt.ERRORCODE)
