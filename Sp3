@@ -1,0 +1,158 @@
+#%RAML 1.0
+title: PackML Custom Scheduler Configuration API
+version: v1
+protocols: [ HTTP, HTTPS ]
+baseUri: /packml/scheduler
+mediaType: application/json
+
+documentation:
+  - title: Overview
+    content: |
+      This API manages PackML scheduler configuration data.
+      Scheduler execution is handled by PMUtil Scheduler.
+      This API only creates, retrieves, and updates configuration records.
+
+  - title: Schedule Time
+    content: |
+      scheduleTime is stored as an INTEGER in the database.
+
+      It represents a PMUtil-encoded schedule value which combines
+      execution time and scheduling rule.
+
+      Examples (logical meaning):
+      - 900 D07   -> Stored as integer by PMUtil
+      - 1800 MD0102
+      - 1000 LBDM
+
+      The API does not interpret or execute this value.
+      It validates presence only; semantics are owned by PMUtil Scheduler.
+
+# =====================================================
+# Data Types
+# =====================================================
+
+types:
+
+  SchedulerTaskRequest:
+    type: object
+    additionalProperties: false
+    properties:
+      taskName:
+        type: string
+        required: true
+        maxLength: 100
+
+      scheduleTime:
+        type: integer
+        required: true
+        description: |
+          PMUtil scheduler encoded schedule time.
+          Stored directly in PKML_SCHEDULED_TASK.SCHEDULE_TIME.
+
+      runFrequency:
+        type: string
+        required: true
+        enum: [ONCE, DAILY, WEEKLY, MONTHLY, QUARTERLY]
+
+      status:
+        type: integer
+        required: true
+        description: |
+          Task status code.
+          1 = ENABLED
+          2 = DISABLED
+
+  SchedulerTaskResponse:
+    type: object
+    properties:
+      taskName: string
+      scheduleTime: integer
+      runFrequency: string
+      status: integer
+      startTime:
+        type: datetime
+        required: false
+      endTime:
+        type: datetime
+        required: false
+      nodeName:
+        type: string
+        required: false
+
+  ErrorResponse:
+    type: object
+    properties:
+      errorCode: string
+      errorMessage: string
+
+# =====================================================
+# Resources
+# =====================================================
+
+/tasks:
+
+  post:
+    description: Create a new PackML scheduler configuration
+    body:
+      application/json:
+        type: SchedulerTaskRequest
+    responses:
+      201:
+        body:
+          application/json:
+            type: SchedulerTaskResponse
+      400:
+        body:
+          application/json:
+            type: ErrorResponse
+      409:
+        description: Task already exists
+        body:
+          application/json:
+            type: ErrorResponse
+
+  get:
+    description: Retrieve all PackML scheduler configurations
+    responses:
+      200:
+        body:
+          application/json:
+            type: SchedulerTaskResponse[]
+
+/tasks/{taskName}:
+
+  uriParameters:
+    taskName:
+      type: string
+      required: true
+
+  get:
+    description: Retrieve scheduler configuration by task name
+    responses:
+      200:
+        body:
+          application/json:
+            type: SchedulerTaskResponse
+      404:
+        body:
+          application/json:
+            type: ErrorResponse
+
+  put:
+    description: Update an existing PackML scheduler configuration
+    body:
+      application/json:
+        type: SchedulerTaskRequest
+    responses:
+      200:
+        body:
+          application/json:
+            type: SchedulerTaskResponse
+      400:
+        body:
+          application/json:
+            type: ErrorResponse
+      404:
+        body:
+          application/json:
+            type: ErrorResponse
